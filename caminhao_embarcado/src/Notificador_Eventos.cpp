@@ -19,3 +19,18 @@
  * 1. Chamada de 'disparar_evento()' pela thread publicadora 
  * (Monitoramento de Falhas).
  */
+
+ #include "Notificador_Eventos.h"
+
+NotificadorEventos::NotificadorEventos() {} // Construtor vazio
+
+void NotificadorEventos::esperar_evento() {
+    std::unique_lock<std::mutex> lock(m_mutex);
+    // Espera até que disparar_evento() seja chamado
+    m_cv.wait(lock);
+}
+
+void NotificadorEventos::disparar_evento() {
+    // Acorda todas as threads que estão esperando
+    m_cv.notify_all();
+}

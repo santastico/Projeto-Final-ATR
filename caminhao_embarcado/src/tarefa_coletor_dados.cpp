@@ -22,3 +22,17 @@
  * 3. IPC (envio): Envia dados de estado (posição, falhas, modo) 
  * para a Interface Local.
  */
+ #include "tarefas.h"
+#include "Buffer_Circular.h"
+#include "Notificador_Eventos.h"
+#include <iostream>
+#include <chrono>
+#include <thread>
+
+void tarefa_coletor_dados(int id, BufferCircular& buffer, NotificadorEventos& notificador) {
+    std::cout << "[Coletor " << id << "] Thread iniciada." << std::endl;
+    while(true) {
+        // Lógica (vazia)
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+}

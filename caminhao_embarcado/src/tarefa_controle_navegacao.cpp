@@ -18,3 +18,17 @@
  * 1. Buffer Circular (escrita): Escreve as variáveis de controle 
  * calculadas "velocidade" e "posicao_angular".
  */
+ #include "tarefas.h"
+#include "Buffer_Circular.h"
+#include "Notificador_Eventos.h"
+#include <iostream>
+#include <chrono>
+#include <thread>
+
+void tarefa_controle_navegacao(int id, BufferCircular& buffer, NotificadorEventos& notificador) {
+    std::cout << "[Navegacao " << id << "] Thread iniciada." << std::endl;
+    while(true) {
+        // Lógica (vazia)
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+}

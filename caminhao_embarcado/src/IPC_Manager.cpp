@@ -18,3 +18,20 @@
  * enviar o "dicionário" de estados (posição, modo, falhas) 
  * para a 'interface_local'.
  */
+
+ #include "IPC_Manager.h"
+#include <iostream>
+
+// Implementação simulada/vazia
+IpcManager::IpcManager(int id) : m_id(id) {
+    std::cout << "[IPC " << m_id << "] Gerenciador IPC inicializado (simulado)." << std::endl;
+}
+
+std::string IpcManager::receber_comando() {
+    // Simula não receber nada
+    return "";
+}
+
+void IpcManager::enviar_estado(const std::string& estado) {
+    // Simula o envio
+}

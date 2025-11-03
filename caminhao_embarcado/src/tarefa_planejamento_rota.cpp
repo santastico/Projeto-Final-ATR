@@ -19,3 +19,17 @@
  * 2. MQTT (publish): Publica no tópico "posicao_inicial" para 
  * informar a Gestão da Mina.
  */
+#include "tarefas.h"
+#include "Buffer_Circular.h"
+#include "Notificador_Eventos.h"
+#include <iostream>
+#include <chrono>
+#include <thread>
+
+void tarefa_planejamento_rota(int id, BufferCircular& buffer) {
+    std::cout << "[Planejamento " << id << "] Thread iniciada." << std::endl;
+    while(true) {
+        // Lógica (vazia)
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+}

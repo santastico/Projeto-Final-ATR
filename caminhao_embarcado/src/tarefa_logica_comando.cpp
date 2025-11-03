@@ -22,3 +22,18 @@
  * 2. MQTT (publish): Publica os comandos finais dos atuadores 
  * "o_aceleracao" e "o_direcao".
  */
+
+ #include "tarefas.h"
+#include "Buffer_Circular.h"
+#include "Notificador_Eventos.h"
+#include <iostream>
+#include <chrono>
+#include <thread>
+
+void tarefa_logica_comando(int id, BufferCircular& buffer, NotificadorEventos& notificador) {
+    std::cout << "[Logica " << id << "] Thread iniciada." << std::endl;
+    while(true) {
+        // Lógica (vazia)
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+}

@@ -25,3 +25,62 @@
  * - 'controle_navegacao' (lê estados, setpoints)
  * - 'planejamento_rota' (lê posição)
  */
+
+#include "Buffer_Circular.h"
+
+// Implementações "vazias" dos métodos, apenas com a lógica 
+// de lock/unlock do mutex para garantir thread-safety.
+
+BufferCircular::BufferCircular() {
+    // Construtor (pode inicializar valores padrão aqui)
+}
+
+void BufferCircular::set_posicao_tratada(const PosicaoData& pos) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_posicao = pos;
+}
+
+BufferCircular::PosicaoData BufferCircular::get_posicao_tratada() {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_posicao;
+}
+
+void BufferCircular::set_comandos_operador(const ComandosOperador& cmds) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_comandos = cmds;
+}
+
+BufferCircular::ComandosOperador BufferCircular::get_comandos_operador() {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_comandos;
+}
+
+void BufferCircular::set_estado_veiculo(const EstadoVeiculo& estado) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_estado = estado;
+}
+
+BufferCircular::EstadoVeiculo BufferCircular::get_estado_veiculo() {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_estado;
+}
+
+void BufferCircular::set_setpoints_navegacao(const SetpointsNavegacao& sp) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_setpoints = sp;
+}
+
+BufferCircular::SetpointsNavegacao BufferCircular::get_setpoints_navegacao() {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_setpoints;
+}
+
+void BufferCircular::set_saida_controle(const SaidaControle& out) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_saida_controle = out;
+}
+
+BufferCircular::SaidaControle BufferCircular::get_saida_controle() {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_saida_controle;
+}
