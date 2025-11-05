@@ -4,7 +4,7 @@
 #include <string>
 
 // O docker-compose define o nome do broker como "mqtt-broker"
-const std::string BROKER_ADDRESS = "tcp://mqtt-broker:1883";
+const std::string BROKER_ADDRESS = "tcp://localhost:1883";
 const int BROKER_PORT = 1883;
 
 #endif
