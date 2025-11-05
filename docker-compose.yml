@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # A 'version' é obsoleta, então removemos
 services:
   # O nome do nosso único serviço
@@ -20,3 +21,5 @@ services:
     # Mantém o terminal interativo (para o Pygame/Teclado)
     stdin_open: true
     tty: true
+=======
+>>>>>>> 723b1d915d54a1a8b69f9b1c829358517fac147c
