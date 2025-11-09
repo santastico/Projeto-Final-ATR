@@ -16,12 +16,14 @@
  * Logica de Comando, Controle de Navegação e Coletor de Dados.
  */
 
- #include "tarefas.h"
+#include "tarefas.h"
 #include "Buffer_Circular.h"
 #include "Notificador_Eventos.h"
 #include <iostream>
 #include <chrono>
 #include <thread>
+
+namespace atr {
 
 void tarefa_monitoramento_falhas(int id, NotificadorEventos& notificador) {
     std::cout << "[MonitorFalhas " << id << "] Thread iniciada." << std::endl;
@@ -30,3 +32,5 @@ void tarefa_monitoramento_falhas(int id, NotificadorEventos& notificador) {
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
 }
+
+} // namespace atr

@@ -19,7 +19,7 @@
  * para a 'interface_local'.
  */
 
- #include "IPC_Manager.h"
+#include "IPC_Manager.h"
 #include <iostream>
 
 // Implementação simulada/vazia

@@ -1,22 +1,18 @@
-# A 'version' é obsoleta, então removemos
+version: "3.8"
+
 services:
-  # O nome do nosso único serviço
-  atr_system:
-    # Constrói a imagem usando o Dockerfile na pasta atual (.)
+  atr:
     build: .
-    
-    # --- Configuração da Interface Gráfica (GUI) ---
-    # Compartilha o "display" do seu computador com o contêiner
+    container_name: atr_unificado
+    # Se quiser inspecionar o broker de fora:
+    ports:
+      - "1883:1883"     # MQTT broker
+    # Monte o código no container (útil em desenvolvimento). Em produção, pode remover.
+    # volumes:
+    #   - ./:/app
     environment:
-      - DISPLAY=${DISPLAY}
-    # Monta o "socket" da interface gráfica
-    volumes:
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      
-    # --- Configuração de Rede e Processos ---
-    # Permite que os processos C++ e Python se falem via IPC
-    ipc: "host"
-    
-    # Mantém o terminal interativo (para o Pygame/Teclado)
-    stdin_open: true
+      # Controla o que o start.sh vai iniciar (UI/simulador/ambos)
+      # START_UI: "1"       # quando a sua main_ui.py estiver pronta
+      START_SIMULATOR: "1"  # simulador Python ligado por padrão
+      BROKER_HOST: "localhost"
     tty: true

@@ -1,3 +1,1 @@
-paho-mqtt
-pygame
-numpy
+paho-mqtt==1.6.1
