@@ -1,24 +1,3 @@
-/**
- * @file tarefa_planejamento_rota.cpp
- * @brief Implementação da thread Planejamento de Rota.
- *
- * @objetivo Responsável por calcular a rota do caminhão. Lê a posição atual 
- * (do Buffer Circular) e o destino final (da Gestão da Mina via MQTT) 
- * e, com base nisso, define os setpoints imediatos (velocidade e ângulo) 
- * para a tarefa de Controle de Navegação.
- *
- * @entradas (Inputs)
- * 1. Buffer Circular (leitura): Lê as variáveis tratadas "i_pos_x", "i_pos_y", 
- * "i_angulo_x".
- * 2. MQTT (subscribe): Assina o tópico "setpoint_posicao_final" 
- * publicado pela Gestão da Mina.
- *
- * @saidas (Outputs)
- * 1. Buffer Circular (escrita): Escreve as variáveis 
- * "setpoint_velocidade" e "setpoint_posicao_angular".
- * 2. MQTT (publish): Publica no tópico "posicao_inicial" para 
- * informar a Gestão da Mina.
- */
 #include "tarefas.h"
 #include "Buffer_Circular.h"
 #include "Notificador_Eventos.h"
@@ -26,158 +5,151 @@
 #include <mqtt/async_client.h>
 #include <nlohmann/json.hpp>
 
+#include <iostream>
 #include <thread>
 #include <chrono>
 #include <mutex>
 #include <condition_variable>
 #include <cmath>
-#include <iostream>
 #include <string>
-#include <semaphore.h>
 
 namespace atr {
 
 using json = nlohmann::json;
 
-static double wrap_angle(double ang_deg) {
-    while (ang_deg > 180.0) ang_deg -= 360.0;
-    while (ang_deg < -180.0) ang_deg += 360.0;
-    return ang_deg;
-}
-
-// Estrutura compartilhada entre a thread MQTT (callback) e a thread de planejamento
-struct AlvoCompartilhado {
+struct DestinoCompartilhado {
     double x = 0.0;
     double y = 0.0;
-    bool ativo = false;
+    bool   ativo = false;
     std::mutex mtx;
-    sem_t sem;  // semáforo usado para sinalizar novo destino
+    std::condition_variable cv;
 };
 
-// ======================================
-// Thread principal de planejamento de rota
-// ======================================
+static double wrap_deg(double a) {
+    while (a > 180.0) a -= 360.0;
+    while (a < -180.0) a += 360.0;
+    return a;
+}
 
 void tarefa_planejamento_rota(int id, BufferCircular& buffer)
 {
-    const std::string broker   = "tcp://localhost:1883";
-    const std::string clientId = "planner_" + std::to_string(id);
-    const std::string topic_sp = "atr/" + std::to_string(id) + "/gestao/setpoint";
-    const std::string topic_log= "atr/" + std::to_string(id) + "/planner/log";
+    std::cout << "[Planejamento " << id << "] Thread iniciada.\n";
 
-    // Objeto compartilhado de sincronização
-    AlvoCompartilhado alvo;
-    sem_init(&alvo.sem, 0, 0);  // semáforo começa em 0
+    const std::string broker    = "tcp://localhost:1883";
+    const std::string client_id = "planner_" + std::to_string(id);
+    const std::string topic_sp  = "atr/" + std::to_string(id) + "/gestao/setpoint_posicao_final";
+    const std::string topic_log = "atr/" + std::to_string(id) + "/planner/log";
 
-    // --- MQTT setup ---
-    mqtt::async_client cli(broker, clientId);
+    mqtt::async_client cli(broker, client_id);
     mqtt::connect_options connOpts;
     connOpts.set_clean_session(true);
 
+    DestinoCompartilhado destino;
+
     try {
         cli.connect(connOpts)->wait();
+        cli.subscribe(topic_sp, 1)->wait();
         std::cout << "[Planejamento " << id << "] Conectado ao broker.\n";
     } catch (const std::exception& e) {
-        std::cerr << "[Planejamento " << id << "] ERRO conectando MQTT: " << e.what() << "\n";
+        std::cerr << "[Planejamento " << id << "] ERRO MQTT: " << e.what() << "\n";
         return;
     }
 
-    // ---------- CALLBACK MQTT ----------
-    class CallbackSetpoint : public virtual mqtt::callback {
-        mqtt::async_client& cli_;
-        AlvoCompartilhado& alvo_;
+    class Cb : public virtual mqtt::callback {
+        DestinoCompartilhado& dest_;
         std::string topic_log_;
+        mqtt::async_client& cli_;
     public:
-        CallbackSetpoint(mqtt::async_client& c, AlvoCompartilhado& alvo, std::string log)
-            : cli_(c), alvo_(alvo), topic_log_(std::move(log)) {}
+        Cb(DestinoCompartilhado& d, std::string log, mqtt::async_client& c)
+            : dest_(d), topic_log_(std::move(log)), cli_(c) {}
 
         void message_arrived(mqtt::const_message_ptr msg) override {
             try {
                 auto j = json::parse(msg->to_string());
-                if (j.contains("x") && j.contains("y")) {
-                    std::lock_guard<std::mutex> lk(alvo_.mtx);
-                    alvo_.x = j["x"].get<double>();
-                    alvo_.y = j["y"].get<double>();
-                    alvo_.ativo = true;
-                    sem_post(&alvo_.sem); // sinaliza nova rota
-                    cli_.publish(topic_log_, "Novo destino recebido", 1, false);
+                if (!j.contains("x") || !j.contains("y"))
+                    return;
+
+                {
+                    std::lock_guard<std::mutex> lk(dest_.mtx);
+                    dest_.x = j["x"].get<double>();
+                    dest_.y = j["y"].get<double>();
+                    dest_.ativo = true;
                 }
-            } catch (std::exception& e) {
-                std::cerr << "[Planejamento MQTT] erro: " << e.what() << "\n";
+
+                cli_.publish(topic_log_, "Novo destino recebido", 1, false);
+                dest_.cv.notify_all();
+            } catch (const std::exception& e) {
+                std::cerr << "[Planejamento] erro parse setpoint: " << e.what() << "\n";
             }
         }
     };
 
-    auto cb = std::make_shared<CallbackSetpoint>(cli, alvo, topic_log);
+    auto cb = std::make_shared<Cb>(destino, topic_log, cli);
     cli.set_callback(*cb);
-    cli.subscribe(topic_sp, 1)->wait();
 
-    std::cout << "[Planejamento " << id << "] Thread iniciada.\n";
+    const double V_MAX    = 2.0;
+    const double KP_DIST  = 0.8;
+    const double KP_ANG   = 2.0;
+    const double DIST_TOL = 0.25;
+    const double ANG_TOL  = 2.0;
 
-    // Constantes de controle
-    const double V_MAX   = 2.0;
-    const double KP_DIST = 0.8;
-    const double KP_ANG  = 2.0;
-
-    // Thread loop principal
     while (true) {
-        try {
-            // espera até haver um destino ativo
-            {
-                std::unique_lock<std::mutex> lk(alvo.mtx);
-                if (!alvo.ativo) {
-                    lk.unlock();
-                    sem_wait(&alvo.sem);
-                    continue;
-                }
-            }
+        // Espera até alguém definir um destino ativo
+        {
+            std::unique_lock<std::mutex> lk(destino.mtx);
+            destino.cv.wait(lk, [&]{ return destino.ativo; });
+        }
 
-            // lê posição tratada do buffer
-            double x=0.0, y=0.0, ang=0.0;
-            bool ok = buffer.lerPosicaoTratada(id, x, y, ang);
-            if (!ok) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
-                continue;
-            }
-
-            // lê o alvo sob mutex
+        // Enquanto houver um destino ativo, gerar setpoints
+        while (true) {
             double gx, gy;
             {
-                std::lock_guard<std::mutex> lk(alvo.mtx);
-                gx = alvo.x;
-                gy = alvo.y;
+                std::lock_guard<std::mutex> lk(destino.mtx);
+                if (!destino.ativo)
+                    break;
+                gx = destino.x;
+                gy = destino.y;
             }
 
-            // cálculo de erro e controle
-            double dx = gx - x;
-            double dy = gy - y;
+            // Lê posição tratada do buffer (usa nomes reais das structs)
+            BufferCircular::PosicaoData pos = buffer.get_posicao_tratada();
+            double x   = static_cast<double>(pos.i_pos_x);
+            double y   = static_cast<double>(pos.i_pos_y);
+            double ang = static_cast<double>(pos.i_angulo_x);
+
+            // Erros
+            double dx   = gx - x;
+            double dy   = gy - y;
             double dist = std::sqrt(dx*dx + dy*dy);
 
             double desired_ang = std::atan2(dy, dx) * 180.0 / M_PI;
-            double ang_err = wrap_angle(desired_ang - ang);
+            double err_ang     = wrap_deg(desired_ang - ang);
 
-            double sp_vel   = std::min(V_MAX, KP_DIST * dist);
-            double sp_angulo= wrap_angle(ang + KP_ANG * ang_err);
+            // Setpoints (limita velocidade)
+            double sp_vel = std::min(V_MAX, KP_DIST * dist);
+            double sp_ang = wrap_deg(ang + KP_ANG * err_ang);
 
-            buffer.escreverSetpointsNavegacao(id, sp_vel, sp_angulo);
+            // Escreve nos setpoints de navegação do buffer
+            BufferCircular::SetpointsNavegacao sp{};
+            sp.set_velocidade = sp_vel;
+            sp.set_pos_angular = sp_ang;
+            buffer.set_setpoints_navegacao(sp);
 
-            // chegou ao destino?
-            if (dist < 0.25 && std::fabs(ang_err) < 2.0) {
-                std::lock_guard<std::mutex> lk(alvo.mtx);
-                alvo.ativo = false;
+
+
+            // Condição de chegada
+            if (dist < DIST_TOL && std::fabs(err_ang) < ANG_TOL) {
+                {
+                    std::lock_guard<std::mutex> lk(destino.mtx);
+                    destino.ativo = false;
+                }
                 cli.publish(topic_log, "Destino atingido", 1, false);
+                break;
             }
 
-            std::this_thread::sleep_for(std::chrono::milliseconds(50)); // 20 Hz
-
-        } catch (const std::exception& e) {
-            std::cerr << "[Planejamento " << id << "] erro loop: " << e.what() << "\n";
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            std::this_thread::sleep_for(std::chrono::milliseconds(50)); // ~20 Hz
         }
     }
-
-    sem_destroy(&alvo.sem);
 }
 
 } // namespace atr
-

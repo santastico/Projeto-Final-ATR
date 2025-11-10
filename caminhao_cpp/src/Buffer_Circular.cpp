@@ -1,4 +1,4 @@
-#include "BufferCircular.h"
+#include "Buffer_Circular.h"
 
 /**
  * @file BufferCircular.cpp
@@ -54,23 +54,23 @@ void BufferCircular::set_saida_controle(const SaidaControle& out) {
 // (Estes métodos são "burros" - eles assumem que o mutex JÁ FOI TRAVADO 
 // pela thread que os chamou)
 
-PosicaoData BufferCircular::get_posicao_tratada() const {
+BufferCircular::PosicaoData BufferCircular::get_posicao_tratada() const {
     return this->m_posicao;
 }
 
-ComandosOperador BufferCircular::get_comandos_operador() const {
+BufferCircular::ComandosOperador BufferCircular::get_comandos_operador() const {
     return this->m_comandos;
 }
 
-EstadoVeiculo BufferCircular::get_estado_veiculo() const {
+BufferCircular::EstadoVeiculo BufferCircular::get_estado_veiculo() const {
     return this->m_estado;
 }
 
-SetpointsNavegacao BufferCircular::get_setpoints_navegacao() const {
+BufferCircular::SetpointsNavegacao BufferCircular::get_setpoints_navegacao() const {
     return this->m_setpoints;
 }
 
-SaidaControle BufferCircular::get_saida_controle() const {
+BufferCircular::SaidaControle BufferCircular::get_saida_controle() const {
     return this->m_saida_controle;
 }
 
