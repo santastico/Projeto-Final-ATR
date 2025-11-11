@@ -16,6 +16,7 @@
  * Isso permite que a Lógica de Comando saiba exatamente qual foi a falha.
  */
 
+namespace atr {
 enum class TipoEvento {
     NENHUM,
     ALERTA_TERMICO,       // T > 95°C
@@ -49,5 +50,5 @@ private:
     bool m_evento_ativo;
     TipoEvento m_tipo_atual;
 };
-
+}
 #endif
