@@ -1,104 +1,71 @@
 #include "Buffer_Circular.h"
 
-/**
- * @file BufferCircular.cpp
- * @brief Implementação da classe BufferCircular (Quadro de Estado Gerenciado).
- *
- * @mecanismo Esta classe implementa o padrão "Blackboard" com 
- * **TRAVAMENTO EXTERNO (EXTERNAL LOCKING)**.
- * * Os métodos 'set_' e 'get_' NÃO travam o mutex; eles apenas 
- * acessam diretamente as variáveis de membro.
- * * A thread que chama (ex: 'logica_comando') DEVE travar o mutex 
- * (obtido via 'get_mutex()') ANTES de chamar 'get_' ou 'set_'.
- */
+BufferCircular::BufferCircular(std::size_t capacidade)
+    : buffer_(capacidade), capacidade_(capacidade) {}
 
-// --- Construtor ---
+// ---------------------------------------------------------------------
+// Escreve uma nova posição tratada no buffer circular
+// ---------------------------------------------------------------------
+void BufferCircular::set_posicao_tratada(const PosicaoData& pos)
+{
+    buffer_[fim_] = pos;
+    fim_ = (fim_ + 1) % capacidade_;
 
-/**
- * @brief Construtor padrão.
- * As variáveis de membro (structs) são inicializadas com seus 
- * valores padrão (definidos no .h) automaticamente.
- */
-BufferCircular::BufferCircular() {
-    // O construtor está vazio, pois os valores padrão (ex: c_man = true)
-    // já foram definidos nas declarações das structs no arquivo .h.
+    if (tamanho_ < capacidade_) {
+        ++tamanho_;
+    } else {
+        // Sobrescreve o mais antigo
+        inicio_ = (inicio_ + 1) % capacidade_;
+    }
 }
 
-
-// --- Métodos de Escrita (Produtores) ---
-// (Estes métodos são "burros" - eles assumem que o mutex JÁ FOI TRAVADO 
-// pela thread que os chamou)
-
-void BufferCircular::set_posicao_tratada(const PosicaoData& pos_tratada) {
-    this->m_posicao = pos_tratada;
+// ---------------------------------------------------------------------
+// Retorna a posição mais recente (sem remover)
+// ---------------------------------------------------------------------
+BufferCircular::PosicaoData BufferCircular::get_posicao_recente() const
+{
+    if (tamanho_ == 0) {
+        return PosicaoData{}; // vazio
+    }
+    std::size_t ultimo = (fim_ + capacidade_ - 1) % capacidade_;
+    return buffer_[ultimo];
 }
 
-void BufferCircular::set_comandos_operador(const ComandosOperador& cmds) {
-    this->m_comandos = cmds;
+// ---------------------------------------------------------------------
+// Retorna cópia de todas as posições armazenadas
+// ---------------------------------------------------------------------
+std::vector<BufferCircular::PosicaoData> BufferCircular::get_todas() const
+{
+    std::vector<PosicaoData> saida;
+    saida.reserve(tamanho_);
+
+    for (std::size_t i = 0; i < tamanho_; ++i) {
+        std::size_t idx = (inicio_ + i) % capacidade_;
+        saida.push_back(buffer_[idx]);
+    }
+    return saida;
 }
 
-void BufferCircular::set_estado_veiculo(const EstadoVeiculo& estado) {
-    this->m_estado = estado;
+// ---------------------------------------------------------------------
+// Retorna referência ao mutex interno (para uso em lock externo)
+// ---------------------------------------------------------------------
+std::mutex& BufferCircular::get_mutex()
+{
+    return mutex_;
 }
 
-void BufferCircular::set_setpoints_navegacao(const SetpointsNavegacao& sp) {
-    this->m_setpoints = sp;
+// ---------------------------------------------------------------------
+// Notifica todos os consumidores esperando novos dados
+// ---------------------------------------------------------------------
+void BufferCircular::notify_all_consumers()
+{
+    cond_var_.notify_all();
 }
 
-void BufferCircular::set_saida_controle(const SaidaControle& out) {
-    this->m_saida_controle = out;
-}
-
-
-// --- Métodos de Leitura (Consumidores) ---
-// (Estes métodos são "burros" - eles assumem que o mutex JÁ FOI TRAVADO 
-// pela thread que os chamou)
-
-BufferCircular::PosicaoData BufferCircular::get_posicao_tratada() const {
-    return this->m_posicao;
-}
-
-BufferCircular::ComandosOperador BufferCircular::get_comandos_operador() const {
-    return this->m_comandos;
-}
-
-BufferCircular::EstadoVeiculo BufferCircular::get_estado_veiculo() const {
-    return this->m_estado;
-}
-
-BufferCircular::SetpointsNavegacao BufferCircular::get_setpoints_navegacao() const {
-    return this->m_setpoints;
-}
-
-BufferCircular::SaidaControle BufferCircular::get_saida_controle() const {
-    return this->m_saida_controle;
-}
-
-
-// --- Métodos de Sincronização (Acesso Público) ---
-
-/**
- * @brief Retorna uma referência ao mutex privado.
- * Permite que as threads executem o travamento externo.
- */
-std::mutex& BufferCircular::get_mutex() {
-    return this->m_mutex;
-}
-
-/**
- * @brief Faz a thread chamadora dormir, esperando por um 'notify_all_consumers()'.
- * @param lock Um 'std::unique_lock' que a thread já deve possuir.
- * O 'wait' libera o lock atomicamente e dorme; ao acordar, 
- * ele re-adquire o lock.
- */
-void BufferCircular::esperar_por_dados(std::unique_lock<std::mutex>& lock) {
-    this->m_cv.wait(lock);
-}
-
-/**
- * @brief Acorda todas as threads que estão "dormindo" em 'esperar_por_dados()'.
- * As threads produtoras devem chamar isso APÓS liberar o mutex.
- */
-void BufferCircular::notify_all_consumers() {
-    this->m_cv.notify_all();
+// ---------------------------------------------------------------------
+// Espera por novos dados (bloqueia thread consumidora)
+// ---------------------------------------------------------------------
+void BufferCircular::wait_for_new_data(std::unique_lock<std::mutex>& lock)
+{
+    cond_var_.wait(lock);
 }
