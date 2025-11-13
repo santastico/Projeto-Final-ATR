@@ -1,7 +1,3 @@
-#include "tarefas.h"
-#include "Buffer_Circular.h"
-#include "Notificador_Eventos.h"
-
 #include <mqtt/async_client.h>
 #include <nlohmann/json.hpp>
 

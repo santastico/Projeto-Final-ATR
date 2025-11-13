@@ -13,10 +13,6 @@
 #include <thread>
 #include <string>
 
-#include "Buffer_Circular.h"
-#include "Notificador_Eventos.h"
-#include "tarefas.h"  // declarações das tarefas no namespace atr
-
 int main(int argc, char* argv[]) {
     // 1) Lê ID do caminhão (opcional). Se não vier, usa 1 para não falhar no Docker.
     int caminhao_id = 1;

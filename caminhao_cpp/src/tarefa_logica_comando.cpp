@@ -22,10 +22,6 @@
  * 2. MQTT (publish): Publica os comandos finais dos atuadores 
  * "o_aceleracao" e "o_direcao".
  */
-
-#include "tarefas.h"
-#include "Buffer_Circular.h"
-#include "Notificador_Eventos.h"
 #include <iostream>
 #include <chrono>
 #include <thread>

@@ -3,10 +3,6 @@
  * @brief Implementação da thread Monitoramento de Falhas.
  */
 
-#include "tarefas.h"
-#include "Notificador_Eventos.h"
-#include "config.h"
-
 #include <mqtt/async_client.h>
 #include <chrono>
 #include <string>

@@ -1,7 +1,3 @@
-#include "tarefas.h"
-#include "Buffer_Circular.h"
-#include "config.h"
-
 #include <mqtt/async_client.h>
 #include <nlohmann/json.hpp>
 

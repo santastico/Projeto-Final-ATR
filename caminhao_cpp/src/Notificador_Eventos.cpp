@@ -20,8 +20,6 @@
  * (Monitoramento de Falhas).
  */
 
-#include "Notificador_Eventos.h"
-
 namespace atr {
 
 NotificadorEventos::NotificadorEventos() 

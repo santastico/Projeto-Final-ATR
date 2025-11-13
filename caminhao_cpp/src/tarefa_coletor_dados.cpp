@@ -22,9 +22,6 @@
  * 3. IPC (envio): Envia dados de estado (posição, falhas, modo) 
  * para a Interface Local.
  */
-#include "tarefas.h"
-#include "Buffer_Circular.h"
-#include "Notificador_Eventos.h"
 #include <iostream>
 #include <chrono>
 #include <thread>

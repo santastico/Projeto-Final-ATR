@@ -18,9 +18,6 @@
  * 1. Buffer Circular (escrita): Escreve as variáveis de controle 
  * calculadas "velocidade" e "posicao_angular".
  */
-#include "tarefas.h"
-#include "Buffer_Circular.h"
-#include "Notificador_Eventos.h"
 #include <iostream>
 #include <chrono>
 #include <thread>

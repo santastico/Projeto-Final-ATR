@@ -18,8 +18,6 @@
  * enviar o "dicionário" de estados (posição, modo, falhas) 
  * para a 'interface_local'.
  */
-
-#include "IPC_Manager.h"
 #include <iostream>
 
 // Implementação simulada/vazia

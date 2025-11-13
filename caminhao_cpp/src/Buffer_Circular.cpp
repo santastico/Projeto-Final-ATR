@@ -1,5 +1,3 @@
-#include "Buffer_Circular.h"
-
 BufferCircular::BufferCircular(std::size_t capacidade)
     : buffer_(capacidade), capacidade_(capacidade) {}
 
