@@ -1,3 +1,7 @@
+#include <vector>
+#include <mutex>
+#include <condition_variable>
+
 BufferCircular::BufferCircular(std::size_t capacidade)
     : buffer_(capacidade), capacidade_(capacidade) {}
 

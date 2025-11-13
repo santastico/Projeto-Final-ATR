@@ -1,3 +1,5 @@
+
+
 #include <mqtt/async_client.h>
 #include <nlohmann/json.hpp>
 
@@ -5,6 +7,10 @@
 #include <mutex>
 #include <atomic>
 #include <iostream>
+#include <string>
+
+const std::string BROKER_ADRESS = "tcp://localhost:1883";
+const int BROKER_PORT = 1883;
 
 using json = nlohmann::json;
 

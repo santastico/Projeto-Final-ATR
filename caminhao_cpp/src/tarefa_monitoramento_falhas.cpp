@@ -2,11 +2,15 @@
  * @file tarefa_monitoramento_falhas.cpp
  * @brief Implementação da thread Monitoramento de Falhas.
  */
-
+#include <string>
 #include <mqtt/async_client.h>
 #include <chrono>
 #include <string>
 #include <iostream>
+#include <string>
+
+const std::string BROKER_ADRESS = "tcp://localhost:1883";
+const int BROKER_PORT = 1883;
 
 namespace atr {
 
