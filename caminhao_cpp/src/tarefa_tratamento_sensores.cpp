@@ -2,217 +2,113 @@
 
 #include <mqtt/async_client.h>
 #include <nlohmann/json.hpp>
-
 #include <deque>
 #include <mutex>
 #include <atomic>
 #include <iostream>
+<<<<<<< HEAD
 #include <string>
 
 const std::string BROKER_ADRESS = "tcp://localhost:1883";
 const int BROKER_PORT = 1883;
+=======
+#include <cctype>
+>>>>>>> parent of 7f4b17e (Mudanças em tarefa_monitoramento_sensores.cpp e ajustes em tarefa_monitoramento_falhas.cpp para conseguir dar build)
 
 using json = nlohmann::json;
 
 namespace atr {
 
-// ---------------------------------------------------------------------
-// 1. Estado compartilhado da tarefa (associado a UM caminhão)
-// ---------------------------------------------------------------------
-
-// Ponteiro para o quadro de estado (BufferCircular) desse caminhão
-static BufferCircular* g_buffer = nullptr;
-
-// ID numérico do caminhão local (ex: 1, 2, 3...)
-static int g_truck_id = 1;
-
-// Flag opcional para encerramento limpo (se for usar no futuro)
+// ====== estado vinculado pelo bind ======
+static BufferCircular* g_buf = nullptr;
+static int g_local_id = 1;
 static std::atomic<bool> g_stop{false};
 
-void tratamento_sensores(BufferCircular* buffer_ptr, int caminhao_id)
-{
-    g_buffer  = buffer_ptr;
-    g_truck_id = caminhao_id;
-
-    std::cout << "[TratamentoSensores] Vinculado ao caminhao_id="
-              << g_truck_id << " buffer=" << g_buffer << "\n";
+void tratamento_sensores(BufferCircular* buffer_ptr, int caminhao_id) {
+    g_buf = buffer_ptr;
+    g_local_id = caminhao_id;
+    std::cout << "[Tratamento] bind: id=" << g_local_id << " buffer=" << (void*)g_buf << "\n";
 }
 
-// ---------------------------------------------------------------------
-// 2. Filtro de Média Móvel (ordem M)
-// ---------------------------------------------------------------------
-
-struct MovingAverage {
-    std::deque<double> janela;
-    std::size_t M = 5;   // ordem do filtro (pode ser configurável)
-    double soma = 0.0;
-
-    double adiciona(double v) {
-        janela.push_back(v);
-        soma += v;
-
-        if (janela.size() > M) {
-            soma -= janela.front();
-            janela.pop_front();
-        }
-
-        return soma / static_cast<double>(janela.size());
-    }
+// ====== filtro de média móvel ======
+struct MovingAvg {
+    std::deque<double> w; size_t M=5; double sum=0;
+    double push(double v){ w.push_back(v); sum+=v; if(w.size()>M){ sum-=w.front(); w.pop_front(); } return sum/w.size(); }
 };
 
-// Instâncias de filtro para cada sinal
-static MovingAverage g_filtro_x;
-static MovingAverage g_filtro_y;
-static MovingAverage g_filtro_ang;
+static MovingAvg g_fx{};
+static MovingAvg g_fy{};
+static MovingAvg g_fang{};
+static std::mutex g_mtx;
 
-// ---------------------------------------------------------------------
-// SINCRONIZAÇÃO 1: Mutex para proteger os filtros
-// ---------------------------------------------------------------------
-// As callbacks MQTT rodam na mesma thread do consume_message,
-// mas deixar o mutex explícito torna o uso seguro se o modelo mudar.
-static std::mutex g_mutex_filtros;
-
-// ---------------------------------------------------------------------
-// 3. Funções auxiliares
-// ---------------------------------------------------------------------
-
-// Lê o truck_id do JSON (aceita número ou string)
-static int extrair_truck_id(const json& j)
-{
-    if (j.contains("truck_id")) {
-        if (j["truck_id"].is_number_integer())
-            return j["truck_id"].get<int>();
-
-        if (j["truck_id"].is_string()) {
-            try {
-                return std::stoi(j["truck_id"].get<std::string>());
-            } catch (...) {
-                return 0;
-            }
-        }
+// extrai número do truck_id (aceita "1" ou "T001")
+static int parse_truck_num(const std::string& tid){
+    try { return std::stoi(tid); }
+    catch(...) {
+        std::string d; for(char c: tid) if (std::isdigit((unsigned char)c)) d.push_back(c);
+        return d.empty()? 0 : std::stoi(d);
     }
-    return 0;
 }
 
-// Aplica filtro e grava no BufferCircular
-static void processar_amostra(const json& j)
-{
-    if (!g_buffer) return;
+static void handle_raw_sample(const json& j){
+    if(!g_buf) return;
 
-    // Confere se a mensagem é para ESTE caminhão
-    const int msg_truck = extrair_truck_id(j);
-    if (msg_truck != g_truck_id)
-        return; // ignora mensagens de outros caminhões
+    int num = parse_truck_num(j.value("truck_id", "0"));
+    if (num != g_local_id) return; // só o meu caminhão
 
-    // Lê valores brutos com ruído vindos do simulador
-    const double x_bruto   = j.value("i_posicao_x", 0.0);
-    const double y_bruto   = j.value("i_posicao_y", 0.0);
-    const double ang_bruto = j.value("i_angulo_x",  0.0);
+    // campos definidos no simulador (Tabela 1)
+    double x   = j.value("i_posicao_x", 0.0);
+    double y   = j.value("i_posicao_y", 0.0);
+    double ang = j.value("i_angulo_x",  0.0);
 
-    double x_filtrado, y_filtrado, ang_filtrado;
-
+    double fx, fy, fang;
     {
-        // -----------------------------------------------------------------
-        // SINCRONIZAÇÃO 2: Mutex dos filtros
-        //
-        // Garante que o cálculo da média móvel (estado interno dos filtros)
-        // não seja corrompido por acessos concorrentes.
-        // -----------------------------------------------------------------
-        std::lock_guard<std::mutex> lock(g_mutex_filtros);
-
-        x_filtrado   = g_filtro_x.adiciona(x_bruto);
-        y_filtrado   = g_filtro_y.adiciona(y_bruto);
-        ang_filtrado = g_filtro_ang.adiciona(ang_bruto);
+        std::lock_guard<std::mutex> lk(g_mtx);
+        fx   = g_fx.push(x);
+        fy   = g_fy.push(y);
+        fang = g_fang.push(ang);
     }
 
-    // Prepara estrutura com valores TRATADOS
-    BufferCircular::PosicaoData pos_tratada;
-    pos_tratada.i_pos_x    = static_cast<int>(x_filtrado);
-    pos_tratada.i_pos_y    = static_cast<int>(y_filtrado);
-    pos_tratada.i_angulo_x = static_cast<int>(ang_filtrado);
-
-    // -----------------------------------------------------------------
-    // SINCRONIZAÇÃO 3: Mutex do BufferCircular + variável de condição
-    // -----------------------------------------------------------------
-    // - Pegamos o mutex EXCLUSIVO do BufferCircular via get_mutex().
-    // - Escrevemos os novos valores tratados.
-    // - Chamamos notify_all_consumers() para acordar outras tarefas
-    //   que possam estar bloqueadas esperando dados novos.
-    // -----------------------------------------------------------------
-    auto& buf_mtx = g_buffer->get_mutex();
-    {
-        std::lock_guard<std::mutex> lock(buf_mtx);
-        g_buffer->set_posicao_tratada(pos_tratada);
-    }
-
-    g_buffer->notify_all_consumers();
+    BufferCircular::PosicaoData pos{};
+    pos.i_pos_x    = fx;
+    pos.i_pos_y    = fy;
+    pos.i_angulo_x = fang;
+    g_buf->set_posicao_tratada(pos);
 }
 
-// ---------------------------------------------------------------------
-// 4. Loop principal da tarefa cíclica
-// ---------------------------------------------------------------------
-
-void tarefa_tratamento_sensores_run(const std::string& broker)
-{
-    if (!g_buffer) {
-        std::cerr << "[TratamentoSensores] ERRO: chame tratamento_sensores(&buffer, id) antes da thread.\n";
+void tarefa_tratamento_sensores_run(const std::string& broker) {
+    if (!g_buf) {
+        std::cerr << "[Tratamento] ERRO: chame tratamento_sensores(&buffer, id) antes da thread!\n";
         return;
     }
-
-    // Endereço do broker (deve ser o mesmo usado no start.sh)
-    const std::string server_uri = "tcp://" + broker + ":1883";
-
-    // ID do cliente MQTT (só para debug/identificação)
-    mqtt::async_client client(
-        server_uri,
-        "tratamento_sensores_" + std::to_string(g_truck_id)
-    );
-
-    mqtt::connect_options conn_opts;
-    conn_opts.set_clean_session(true);
+    const std::string uri = "tcp://" + broker + ":1883";
+    mqtt::async_client cli(uri, "cpp_filter_" + std::to_string(::time(nullptr)));
+    mqtt::connect_options conn; conn.set_clean_session(true);
 
     try {
-        // Conecta no broker
-        client.connect(conn_opts)->wait();
+        cli.connect(conn)->wait();
+        cli.start_consuming();
+        cli.subscribe("atr/+/sensor/raw", 1)->wait();
+        std::cout << "[Tratamento] conectado ao broker " << uri << " (local_id=" << g_local_id << ")\n";
 
-        // Modo "consumer": vamos usar consume_message() num loop
-        client.start_consuming();
-
-        // Tópico de telemetria do simulador (JSON com ruído)
-        const std::string topic_raw = "atr/+/sensor/raw";
-        client.subscribe(topic_raw, 1)->wait();
-
-        std::cout << "[TratamentoSensores] Conectado em "
-                  << server_uri << ", assinando " << topic_raw
-                  << " para caminhao_id=" << g_truck_id << "\n";
-
-        // ------------------ Loop cíclico concorrente ------------------
         while (!g_stop.load()) {
-            // Bloqueia até chegar uma mensagem, ou retorna nullptr se desconectar
-            auto msg = client.consume_message();
-            if (!msg) {
-                // Se der problema de conexão, sai do loop para permitir finalização.
-                break;
-            }
+            // Versão compatível: bloqueia até chegar mensagem (ou desconectar)
+            auto msg = cli.consume_message();
+            if (!msg) continue;
 
             try {
                 auto j = json::parse(msg->get_payload());
-                processar_amostra(j);
-            }
-            catch (const std::exception& e) {
-                std::cerr << "[TratamentoSensores] Erro ao processar mensagem: "
-                          << e.what() << "\n";
+                handle_raw_sample(j);
+            } catch (const std::exception& e) {
+                std::cerr << "[Tratamento] parse erro: " << e.what() << "\n";
             }
         }
-        // ----------------------------------------------------------------
 
-        // Encerramento limpo
-        client.unsubscribe(topic_raw)->wait();
-        client.stop_consuming();
-        client.disconnect()->wait();
-    }
-    catch (const std::exception& e) {
-        std::cerr << "[TratamentoSensores] ERRO MQTT: " << e.what() << "\n";
+        cli.unsubscribe("atr/+/sensor/raw")->wait();
+        cli.stop_consuming();
+        cli.disconnect()->wait();
+    } catch (const std::exception& e) {
+        std::cerr << "[Tratamento] MQTT erro: " << e.what() << "\n";
     }
 }
 
