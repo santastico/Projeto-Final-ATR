@@ -1,71 +1,47 @@
-#include "Buffer_Circular.h"
+#ifndef BUFFER_CIRCULAR_H
+#define BUFFER_CIRCULAR_H
 
-BufferCircular::BufferCircular(std::size_t capacidade)
-    : buffer_(capacidade), capacidade_(capacidade) {}
+#include <vector>
+#include <mutex>
+#include <condition_variable>
 
-// ---------------------------------------------------------------------
-// Escreve uma nova posição tratada no buffer circular
-// ---------------------------------------------------------------------
-void BufferCircular::set_posicao_tratada(const PosicaoData& pos)
-{
-    buffer_[fim_] = pos;
-    fim_ = (fim_ + 1) % capacidade_;
+class BufferCircular {
+public:
+    // Estrutura dos dados tratados (posição e ângulo)
+    struct PosicaoData {
+        int i_pos_x = 0;
+        int i_pos_y = 0;
+        int i_angulo_x = 0;
+    };
 
-    if (tamanho_ < capacidade_) {
-        ++tamanho_;
-    } else {
-        // Sobrescreve o mais antigo
-        inicio_ = (inicio_ + 1) % capacidade_;
-    }
-}
+private:
+    std::vector<PosicaoData> buffer_;
+    std::size_t capacidade_;
+    std::size_t inicio_ = 0;  // índice de leitura
+    std::size_t fim_ = 0;     // índice de escrita
+    std::size_t tamanho_ = 0; // número atual de elementos
 
-// ---------------------------------------------------------------------
-// Retorna a posição mais recente (sem remover)
-// ---------------------------------------------------------------------
-BufferCircular::PosicaoData BufferCircular::get_posicao_recente() const
-{
-    if (tamanho_ == 0) {
-        return PosicaoData{}; // vazio
-    }
-    std::size_t ultimo = (fim_ + capacidade_ - 1) % capacidade_;
-    return buffer_[ultimo];
-}
+    std::mutex mutex_;
+    std::condition_variable cond_var_;
 
-// ---------------------------------------------------------------------
-// Retorna cópia de todas as posições armazenadas
-// ---------------------------------------------------------------------
-std::vector<BufferCircular::PosicaoData> BufferCircular::get_todas() const
-{
-    std::vector<PosicaoData> saida;
-    saida.reserve(tamanho_);
+public:
+    explicit BufferCircular(std::size_t capacidade = 200);
 
-    for (std::size_t i = 0; i < tamanho_; ++i) {
-        std::size_t idx = (inicio_ + i) % capacidade_;
-        saida.push_back(buffer_[idx]);
-    }
-    return saida;
-}
+    // Grava nova posição tratada (substitui mais antiga se cheio)
+    void set_posicao_tratada(const PosicaoData& pos);
 
-// ---------------------------------------------------------------------
-// Retorna referência ao mutex interno (para uso em lock externo)
-// ---------------------------------------------------------------------
-std::mutex& BufferCircular::get_mutex()
-{
-    return mutex_;
-}
+    // Lê a posição mais recente
+    PosicaoData get_posicao_recente() const;
 
-// ---------------------------------------------------------------------
-// Notifica todos os consumidores esperando novos dados
-// ---------------------------------------------------------------------
-void BufferCircular::notify_all_consumers()
-{
-    cond_var_.notify_all();
-}
+    // Lê todas as posições disponíveis (para debug ou histórico)
+    std::vector<PosicaoData> get_todas() const;
 
-// ---------------------------------------------------------------------
-// Espera por novos dados (bloqueia thread consumidora)
-// ---------------------------------------------------------------------
-void BufferCircular::wait_for_new_data(std::unique_lock<std::mutex>& lock)
-{
-    cond_var_.wait(lock);
-}
+    // Notificação e acesso ao mutex (para integração com outras tarefas)
+    std::mutex& get_mutex();
+    void notify_all_consumers();
+
+    // Espera por novos dados (para threads consumidoras)
+    void wait_for_new_data(std::unique_lock<std::mutex>& lock);
+};
+
+#endif // BUFFER_CIRCULAR_H
