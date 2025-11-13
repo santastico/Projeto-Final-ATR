@@ -22,6 +22,7 @@
  * 3. IPC (envio): Envia dados de estado (posição, falhas, modo) 
  * para a Interface Local.
  */
+#include <string>
 #include <iostream>
 #include <chrono>
 #include <thread>

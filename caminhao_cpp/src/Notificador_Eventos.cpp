@@ -19,6 +19,8 @@
  * 1. Chamada de 'disparar_evento()' pela thread publicadora 
  * (Monitoramento de Falhas).
  */
+#include <mutex>
+#include <condition_variable>
 
 namespace atr {
 

@@ -18,6 +18,7 @@
  * 1. Buffer Circular (escrita): Escreve as variáveis de controle 
  * calculadas "velocidade" e "posicao_angular".
  */
+#include <string>
 #include <iostream>
 #include <chrono>
 #include <thread>

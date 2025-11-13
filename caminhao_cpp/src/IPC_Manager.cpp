@@ -19,6 +19,7 @@
  * para a 'interface_local'.
  */
 #include <iostream>
+#include <string>
 
 // Implementação simulada/vazia
 IpcManager::IpcManager(int id) : m_id(id) {
