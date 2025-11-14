@@ -150,17 +150,24 @@ static void processar_amostra(const json& j)
 // 4. Loop principal da tarefa cíclica
 // ---------------------------------------------------------------------
 
-void tarefa_tratamento_sensores_run(const std::string& broker)
+void tarefa_tratamento_sensores_run(const std::string& broker_param)
 {
     if (!g_buffer) {
         std::cerr << "[TratamentoSensores] ERRO: chame tratamento_sensores(&buffer, id) antes da thread.\n";
         return;
     }
 
-    // Endereço do broker (deve ser o mesmo usado no start.sh)
-    const std::string server_uri = "tcp://" + broker + ":1883";
+    // -----------------------------------------------------------------
+    // MONTA A URI DO BROKER DE FORMA ROBUSTA
+    // -----------------------------------------------------------------
+    // Se receber só "localhost", vira "tcp://localhost:1883"
+    // Se já receber "tcp://algo:porta", usa como está.
+    // -----------------------------------------------------------------
+    std::string server_uri = broker_param;
+    if (server_uri.rfind("tcp://", 0) != 0) {
+        server_uri = "tcp://" + server_uri + ":1883";
+    }
 
-    // ID do cliente MQTT (só para debug/identificação)
     mqtt::async_client client(
         server_uri,
         "tratamento_sensores_" + std::to_string(g_truck_id)
@@ -186,10 +193,9 @@ void tarefa_tratamento_sensores_run(const std::string& broker)
 
         // ------------------ Loop cíclico concorrente ------------------
         while (!g_stop.load()) {
-            // Bloqueia até chegar uma mensagem, ou retorna nullptr se desconectar
             auto msg = client.consume_message();
             if (!msg) {
-                // Se der problema de conexão, sai do loop para permitir finalização.
+                // problema de conexão: sai do loop
                 break;
             }
 
@@ -204,7 +210,6 @@ void tarefa_tratamento_sensores_run(const std::string& broker)
         }
         // ----------------------------------------------------------------
 
-        // Encerramento limpo
         client.unsubscribe(topic_raw)->wait();
         client.stop_consuming();
         client.disconnect()->wait();
@@ -213,5 +218,6 @@ void tarefa_tratamento_sensores_run(const std::string& broker)
         std::cerr << "[TratamentoSensores] ERRO MQTT: " << e.what() << "\n";
     }
 }
+
 
 } // namespace atr

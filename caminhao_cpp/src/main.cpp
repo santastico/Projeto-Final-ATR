@@ -45,7 +45,7 @@ int main(int argc, char* argv[]) {
     // Thread 1: Tratamento de Sensores
     std::thread t_sens(
         atr::tarefa_tratamento_sensores_run,
-        std::string("localhost")   // broker dentro do container
+        std::string("tcp://localhost:1883")   // URI completa para Paho C++
     );
 
     // Thread 2: Monitoramento de Falhas

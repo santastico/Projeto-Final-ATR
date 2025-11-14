@@ -100,7 +100,7 @@ void tarefa_planejamento_rota(int id, BufferCircular& buffer)
             destino.cv.wait(lk, [&]{ return destino.ativo; });
         }
 
-        // Enquanto houver um destino ativo, gerar setpoints
+        // Enquanto houver um destino ativo, gerar setpoints "lógicos"
         while (true) {
             double gx, gy;
             {
@@ -111,8 +111,8 @@ void tarefa_planejamento_rota(int id, BufferCircular& buffer)
                 gy = destino.y;
             }
 
-            // Lê posição tratada do buffer (usa nomes reais das structs)
-            BufferCircular::PosicaoData pos = buffer.get_posicao_tratada();
+            // Lê posição TRATADA do buffer usando a API atual
+            BufferCircular::PosicaoData pos = buffer.get_posicao_recente();
             double x   = static_cast<double>(pos.i_pos_x);
             double y   = static_cast<double>(pos.i_pos_y);
             double ang = static_cast<double>(pos.i_angulo_x);
@@ -125,17 +125,31 @@ void tarefa_planejamento_rota(int id, BufferCircular& buffer)
             double desired_ang = std::atan2(dy, dx) * 180.0 / M_PI;
             double err_ang     = wrap_deg(desired_ang - ang);
 
-            // Setpoints (limita velocidade)
+            // Setpoints (apenas calculados aqui por enquanto)
             double sp_vel = std::min(V_MAX, KP_DIST * dist);
             double sp_ang = wrap_deg(ang + KP_ANG * err_ang);
 
-            // Escreve nos setpoints de navegação do buffer
-            BufferCircular::SetpointsNavegacao sp{};
-            sp.set_velocidade = sp_vel;
-            sp.set_pos_angular = sp_ang;
-            buffer.set_setpoints_navegacao(sp);
-
-
+            // TODO FUTURO:
+            // Quando o BufferCircular tiver suporte a setpoints de navegação,
+            // vamos escrever algo como:
+            //
+            //   BufferCircular::SetpointsNavegacao sp{};
+            //   sp.set_velocidade = sp_vel;
+            //   sp.set_pos_angular = sp_ang;
+            //   buffer.set_setpoints_navegacao(sp);
+            //
+            // Por enquanto, apenas publicamos no log para debug.
+            json jlog{
+                {"x_atual", x},
+                {"y_atual", y},
+                {"ang_atual", ang},
+                {"x_dest", gx},
+                {"y_dest", gy},
+                {"dist", dist},
+                {"sp_vel", sp_vel},
+                {"sp_ang", sp_ang}
+            };
+            cli.publish(topic_log, jlog.dump(), 1, false);
 
             // Condição de chegada
             if (dist < DIST_TOL && std::fabs(err_ang) < ANG_TOL) {
