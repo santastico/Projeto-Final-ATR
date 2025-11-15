@@ -147,9 +147,8 @@ void tarefa_logica_comando(int id, BufferCircular& buffer, NotificadorEventos& n
         }
         else if (e_automatico) {
             // Modo automático: anda para frente em linha reta
-            cmd_acel = 40;  // 40% de aceleração, 
-            //vamos ja deixar definida a aceleração(valor_padrao) ou vamos usar do controle_navegação?
-            cmd_dir  = 0;   // direção centralizada
+            cmd_acel = (int)saida_ctrl.velocidade;       // <--- valor calculado pelo Controle
+            cmd_dir  = (int)saida_ctrl.posicao_angular;  // <--- valor calculado pelo Controle
         }
         else {
             // Modo manual (ainda não integrado com Interface Local):
@@ -163,12 +162,21 @@ void tarefa_logica_comando(int id, BufferCircular& buffer, NotificadorEventos& n
         cmd_dir  = std::clamp(cmd_dir,  -180, 180);
 
         // -------------------------------------------------------------
-        // 4) Publica comandos para o simulador via MQTT
+        // 4) Feedback de estado no BufferCircular
+        // -------------------------------------------------------------
+        BufferCircular::EstadoVeiculo estado_atual;
+        estado_atual.e_defeito    = e_defeito;
+        estado_atual.e_automatico = e_automatico;
+        buffer.set_estado_veiculo(estado_atual);
+
+        // -------------------------------------------------------------
+        // -------------------------------------------------------------
+        // 5) Publica comandos para o simulador via MQTT
         // -------------------------------------------------------------
         publicador.publicar(cmd_acel, cmd_dir);
 
         // -------------------------------------------------------------
-        // 5) Período da tarefa (~20 Hz -> 50 ms)
+        // 6) Período da tarefa (~20 Hz -> 50 ms)
         // -------------------------------------------------------------
         std::this_thread::sleep_for(50ms);
     }
