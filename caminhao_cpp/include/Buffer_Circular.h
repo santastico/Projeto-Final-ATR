@@ -4,18 +4,8 @@
 #include <cstddef>  // para size_t
 #include <stdexcept> // para exceções
 
-<<<<<<< HEAD
 // Classe template para Buffer Circular genérico
 template <typename T>
-=======
-struct EstadoVeiculo {
-    bool e_defeito    = false;
-    bool e_automatico = false;
-};
-
-void set_estado_veiculo(const EstadoVeiculo& est);
-
->>>>>>> 9a292b71b7378cad101e77ac32d255a100cbf4e2
 class BufferCircular {
 private:
     T* buffer;        // Array dinâmico para armazenar os dados
