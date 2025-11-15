@@ -12,14 +12,14 @@
 #include <iostream>
 #include <thread>
 #include <string>
-
+#include <mutex>
 #include "Buffer_Circular.h"
 #include "tarefas.h"  // declarações das tarefas no namespace atr
 
 int main() {
     // 1) Lê ID do caminhão (opcional). Se não vier, usa 1 para não falhar no Docker.
     int caminhao_id = 1;
-
+    std::mutex mtx_posicao_tratada;
     std::cout << "--- Iniciando Caminhao Embarcado ID: " << caminhao_id << " ---\n";
 
     // Buffer de posição bruta
@@ -27,7 +27,7 @@ int main() {
     BufferCircular buffer_posicao_tratada(100);
 
     // Vincula buffer + id para a tarefa de tratamento de sensores
-    atr::tratamento_sensores(&buffer_posicao_bruta, buffer_posicao_tratada,caminhao_id);
+    atr::tratamento_sensores(&buffer_posicao_bruta, &buffer_posicao_tratada, mtx_posicao_tratada, caminhao_id);
 
     // Thread 1: Tratamento de Sensores
     std::thread t_sens(
