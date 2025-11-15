@@ -1,71 +1,87 @@
-#include "Buffer_Circular.h"
+#ifndef BUFFERCIRCULAR_CPP
+#define BUFFERCIRCULAR_CPP
 
-BufferCircular::BufferCircular(std::size_t capacidade)
-    : buffer_(capacidade), capacidade_(capacidade) {}
+#include "BufferCircular.h"
 
-// ---------------------------------------------------------------------
-// Escreve uma nova posição tratada no buffer circular
-// ---------------------------------------------------------------------
-void BufferCircular::set_posicao_tratada(const PosicaoData& pos)
-{
-    buffer_[fim_] = pos;
-    fim_ = (fim_ + 1) % capacidade_;
-
-    if (tamanho_ < capacidade_) {
-        ++tamanho_;
-    } else {
-        // Sobrescreve o mais antigo
-        inicio_ = (inicio_ + 1) % capacidade_;
+// Construtor: aloca array e inicializa índices
+template <typename T>
+BufferCircular<T>::BufferCircular(size_t cap) : capacidade(cap), head(0), tail(0), tamanho(0) {
+    if (capacidade == 0) {
+        throw std::invalid_argument("Capacidade deve ser maior que zero.");
     }
+    buffer = new T[capacidade];
 }
 
-// ---------------------------------------------------------------------
-// Retorna a posição mais recente (sem remover)
-// ---------------------------------------------------------------------
-BufferCircular::PosicaoData BufferCircular::get_posicao_recente() const
-{
-    if (tamanho_ == 0) {
-        return PosicaoData{}; // vazio
+// Destrutor: libera memória alocada
+template <typename T>
+BufferCircular<T>::~BufferCircular() {
+    delete[] buffer;
+}
+
+// Escreve item na posição tail, se não estiver cheio
+template <typename T>
+bool BufferCircular<T>::escrever(const T& item) {
+    if (estaCheio()) {
+        return false; // Buffer cheio, não pode escrever
     }
-    std::size_t ultimo = (fim_ + capacidade_ - 1) % capacidade_;
-    return buffer_[ultimo];
+    buffer[tail] = item;
+    tail = (tail + 1) % capacidade;
+    tamanho++;
+    return true;
 }
 
-// ---------------------------------------------------------------------
-// Retorna cópia de todas as posições armazenadas
-// ---------------------------------------------------------------------
-std::vector<BufferCircular::PosicaoData> BufferCircular::get_todas() const
-{
-    std::vector<PosicaoData> saida;
-    saida.reserve(tamanho_);
-
-    for (std::size_t i = 0; i < tamanho_; ++i) {
-        std::size_t idx = (inicio_ + i) % capacidade_;
-        saida.push_back(buffer_[idx]);
+// Lê item na posição head sem remover
+template <typename T>
+bool BufferCircular<T>::ler(T& item) const {
+    if (estaVazio()) {
+        return false; // Buffer vazio, nada a ler
     }
-    return saida;
+    item = buffer[head];
+    return true;
 }
 
-// ---------------------------------------------------------------------
-// Retorna referência ao mutex interno (para uso em lock externo)
-// ---------------------------------------------------------------------
-std::mutex& BufferCircular::get_mutex()
-{
-    return mutex_;
+// Retira item da posição head e avança head
+template <typename T>
+bool BufferCircular<T>::retirar(T& item) {
+    if (estaVazio()) {
+        return false; // Buffer vazio
+    }
+    item = buffer[head];
+    head = (head + 1) % capacidade;
+    tamanho--;
+    return true;
 }
 
-// ---------------------------------------------------------------------
-// Notifica todos os consumidores esperando novos dados
-// ---------------------------------------------------------------------
-void BufferCircular::notify_all_consumers()
-{
-    cond_var_.notify_all();
+// Verifica se buffer está vazio
+template <typename T>
+bool BufferCircular<T>::estaVazio() const {
+    return (tamanho == 0);
 }
 
-// ---------------------------------------------------------------------
-// Espera por novos dados (bloqueia thread consumidora)
-// ---------------------------------------------------------------------
-void BufferCircular::wait_for_new_data(std::unique_lock<std::mutex>& lock)
-{
-    cond_var_.wait(lock);
+// Verifica se buffer está cheio
+template <typename T>
+bool BufferCircular<T>::estaCheio() const {
+    return (tamanho == capacidade);
 }
+
+// Retorna tamanho atual
+template <typename T>
+size_t BufferCircular<T>::obterTamanho() const {
+    return tamanho;
+}
+
+// Retorna capacidade máxima
+template <typename T>
+size_t BufferCircular<T>::obterCapacidade() const {
+    return capacidade;
+}
+
+// Reseta buffer, descartando dados
+template <typename T>
+void BufferCircular<T>::limpar() {
+    head = 0;
+    tail = 0;
+    tamanho = 0;
+}
+
+#endif // BUFFERCIRCULAR_CPP

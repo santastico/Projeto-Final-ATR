@@ -1,47 +1,51 @@
-#ifndef BUFFER_CIRCULAR_H
-#define BUFFER_CIRCULAR_H
+#ifndef BUFFERCIRCULAR_H
+#define BUFFERCIRCULAR_H
 
-#include <vector>
-#include <mutex>
-#include <condition_variable>
+#include <cstddef>  // para size_t
+#include <stdexcept> // para exceções
 
+// Classe template para Buffer Circular genérico
+template <typename T>
 class BufferCircular {
-public:
-    // Estrutura dos dados tratados (posição e ângulo)
-    struct PosicaoData {
-        int i_pos_x = 0;
-        int i_pos_y = 0;
-        int i_angulo_x = 0;
-    };
-
 private:
-    std::vector<PosicaoData> buffer_;
-    std::size_t capacidade_;
-    std::size_t inicio_ = 0;  // índice de leitura
-    std::size_t fim_ = 0;     // índice de escrita
-    std::size_t tamanho_ = 0; // número atual de elementos
-
-    std::mutex mutex_;
-    std::condition_variable cond_var_;
+    T* buffer;        // Array dinâmico para armazenar os dados
+    size_t capacidade; // Capacidade máxima do buffer
+    size_t head;      // Índice para leitura
+    size_t tail;      // Índice para escrita
+    size_t tamanho;   // Quantidade de elementos atuais
 
 public:
-    explicit BufferCircular(std::size_t capacidade = 200);
+    // Construtor: inicializa buffer e índices
+    explicit BufferCircular(size_t capacidade);
 
-    // Grava nova posição tratada (substitui mais antiga se cheio)
-    void set_posicao_tratada(const PosicaoData& pos);
+    // Destrutor: libera memória
+    ~BufferCircular();
 
-    // Lê a posição mais recente
-    PosicaoData get_posicao_recente() const;
+    // Escreve um elemento no buffer. Retorna true se sucesso, false se cheio
+    bool escrever(const T& item);
 
-    // Lê todas as posições disponíveis (para debug ou histórico)
-    std::vector<PosicaoData> get_todas() const;
+    // Lê um elemento sem retirar. Retorna true se sucesso, false se vazio
+    bool ler(T& item) const;
 
-    // Notificação e acesso ao mutex (para integração com outras tarefas)
-    std::mutex& get_mutex();
-    void notify_all_consumers();
+    // Retira elemento do buffer e armazena em item. Retorna true se sucesso, false se vazio
+    bool retirar(T& item);
 
-    // Espera por novos dados (para threads consumidoras)
-    void wait_for_new_data(std::unique_lock<std::mutex>& lock);
+    // Retorna se o buffer está vazio
+    bool estaVazio() const;
+
+    // Retorna se o buffer está cheio
+    bool estaCheio() const;
+
+    // Retorna número atual de elementos
+    size_t obterTamanho() const;
+
+    // Retorna capacidade máxima
+    size_t obterCapacidade() const;
+
+    // Limpa o buffer, resetando índices e tamanho
+    void limpar();
 };
 
-#endif // BUFFER_CIRCULAR_H
+#include "BufferCircular.cpp"  // Incluir implementação do template
+
+#endif // BUFFERCIRCULAR_H
