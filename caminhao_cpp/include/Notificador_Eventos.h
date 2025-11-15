@@ -36,6 +36,14 @@ public:
      * @return O tipo do evento que causou o desbloqueio.
      */
     TipoEvento esperar_evento();
+
+    /**
+     * @brief Verifica se há um evento pendente SEM bloquear.
+     *
+     * Se houver um evento ativo, retorna esse evento e o consome.
+     * Caso contrário, retorna TipoEvento::NENHUM.
+     */
+    TipoEvento verificar_sem_bloqueio();
     
     /**
      * @brief Acorda as threads esperando e informa o tipo do evento.

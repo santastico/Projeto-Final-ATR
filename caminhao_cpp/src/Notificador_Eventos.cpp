@@ -21,6 +21,7 @@
  */
 
 #include "Notificador_Eventos.h"
+#include <chrono>
 
 namespace atr {
 
@@ -39,6 +40,23 @@ TipoEvento NotificadorEventos::esperar_evento() {
     m_tipo_atual = TipoEvento::NENHUM;
     
     return evento_recebido;
+}
+
+TipoEvento NotificadorEventos::verificar_sem_bloqueio() {
+    // Protege o acesso às variáveis internas
+    std::lock_guard<std::mutex> lock(m_mutex);
+
+    // Se não há evento ativo, retorna NENHUM
+    if (!m_evento_ativo) {
+        return TipoEvento::NENHUM;
+    }
+
+    // Há um evento pendente → captura e limpa
+    TipoEvento evento = m_tipo_atual;
+    m_evento_ativo = false;
+    m_tipo_atual   = TipoEvento::NENHUM;
+
+    return evento;
 }
 
 void NotificadorEventos::disparar_evento(TipoEvento tipo) {

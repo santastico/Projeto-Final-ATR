@@ -26,17 +26,151 @@
 #include "tarefas.h"
 #include "Buffer_Circular.h"
 #include "Notificador_Eventos.h"
+#include "config.h"
+
+#include <mqtt/async_client.h>
+
 #include <iostream>
+#include <string>
 #include <chrono>
 #include <thread>
+#include <algorithm>
 
 namespace atr {
 
-void tarefa_logica_comando(int id, BufferCircular& buffer, NotificadorEventos& notificador) {
-    std::cout << "[Logica " << id << "] Thread iniciada." << std::endl;
-    while(true) {
-        // Lógica (vazia)
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+using namespace std::chrono_literals;
+
+// ---------------------------------------------------------------------
+// Classe auxiliar para publicar aceleração e direção via MQTT
+// ---------------------------------------------------------------------
+class PublicadorAtuadores {
+public:
+    explicit PublicadorAtuadores(int caminhao_id)
+        : m_client(BROKER_ADDRESS, "logica_cmd_" + std::to_string(caminhao_id))
+    {
+        // Tópicos que o simulador vai assinar
+        std::string base = "caminhao/" + std::to_string(caminhao_id) + "/atuadores/";
+        m_topic_acel = base + "o_aceleracao";
+        m_topic_dir  = base + "o_direcao";
+
+        mqtt::connect_options opts;
+        opts.set_clean_session(true);
+
+        try {
+            m_client.connect(opts)->wait();
+            std::cout << "[Logica " << caminhao_id
+                      << "] Conectado ao broker MQTT em " << BROKER_ADDRESS << "\n";
+        }
+        catch (const std::exception& e) {
+            std::cerr << "[Logica " << caminhao_id
+                      << "] ERRO ao conectar MQTT: " << e.what() << "\n";
+        }
+    }
+
+    void publicar(int aceleracao, int direcao)
+    {
+        try {
+            // Publica aceleração
+            auto msg_acel = mqtt::make_message(m_topic_acel,
+                                               std::to_string(aceleracao));
+            msg_acel->set_qos(0);
+            m_client.publish(msg_acel);
+
+            // Publica direção
+            auto msg_dir = mqtt::make_message(m_topic_dir,
+                                              std::to_string(direcao));
+            msg_dir->set_qos(0);
+            m_client.publish(msg_dir);
+        }
+        catch (const std::exception& e) {
+            std::cerr << "[Logica] ERRO ao publicar atuadores: "
+                      << e.what() << "\n";
+        }
+    }
+
+private:
+    mqtt::async_client m_client;
+    std::string m_topic_acel;
+    std::string m_topic_dir;
+};
+
+// ---------------------------------------------------------------------
+// Tarefa Lógica de Comando
+// ---------------------------------------------------------------------
+void tarefa_logica_comando(int id, BufferCircular& buffer, NotificadorEventos& notificador)
+{
+    std::cout << "[Logica " << id << "] Tarefa iniciada.\n";
+
+    // Publicador de saída
+    PublicadorAtuadores publicador(id);
+
+    // Estados internos da máquina de estados
+    bool e_defeito    = false;  // começa SEM defeito
+    bool e_automatico = true;   // começa em modo automático
+
+    // Comandos finais dos atuadores
+    int cmd_acel = 0;           // -100 a 100
+    int cmd_dir  = 0;           // -180 a 180
+
+    while (true) {
+        // -------------------------------------------------------------
+        // 1) Verifica se há evento de falha pendente (NÃO bloqueante)
+        // -------------------------------------------------------------
+    
+        TipoEvento evento = notificador.verificar_sem_bloqueio();
+
+        if (evento != TipoEvento::NENHUM) {
+            std::cout << "[Logica " << id << "] Evento recebido (enum="
+                      << static_cast<int>(evento) << ")\n";
+
+            // Qualquer evento diferente de NENHUM coloca o sistema em defeito,
+            // desliga o modo automático e zera atuadores.
+            e_defeito    = true;
+            e_automatico = false;
+            cmd_acel     = 0;
+            cmd_dir      = 0;
+        }
+
+        // -------------------------------------------------------------
+        // 2) Lê a posição tratada mais recente do buffer
+        // -------------------------------------------------------------
+        BufferCircular::PosicaoData pos = buffer.get_posicao_recente();
+        (void)pos; // evita warning de variável não usada
+
+        // -------------------------------------------------------------
+        // 3) Lógica de decisão dos atuadores
+        // -------------------------------------------------------------
+        if (e_defeito) {
+            // Em defeito: parada segura
+            cmd_acel = 0;
+            cmd_dir  = 0;
+        }
+        else if (e_automatico) {
+            // Modo automático: anda para frente em linha reta
+            cmd_acel = 40;  // 40% de aceleração, 
+            //vamos ja deixar definida a aceleração(valor_padrao) ou vamos usar do controle_navegação?
+            cmd_dir  = 0;   // direção centralizada
+        }
+        else {
+            // Modo manual (ainda não integrado com Interface Local):
+            // por enquanto mantemos o veículo parado.
+            cmd_acel = 0;
+            cmd_dir  = 0;
+        }
+
+        // Garante limites
+        cmd_acel = std::clamp(cmd_acel, -100, 100);
+        cmd_dir  = std::clamp(cmd_dir,  -180, 180);
+
+        // -------------------------------------------------------------
+        // 4) Publica comandos para o simulador via MQTT
+        // -------------------------------------------------------------
+        publicador.publicar(cmd_acel, cmd_dir);
+
+        // -------------------------------------------------------------
+        // 5) Período da tarefa (~20 Hz -> 50 ms)
+        // -------------------------------------------------------------
+        std::this_thread::sleep_for(50ms);
     }
 }
 
