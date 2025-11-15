@@ -23,22 +23,27 @@ int main() {
     std::cout << "--- Iniciando Caminhao Embarcado ID: " << caminhao_id << " ---\n";
 
     // Buffer de posição bruta
-    BufferCircular buffer_posicao_bruta(10);
-    BufferCircular buffer_posicao_tratada(100);
+    BufferCircular<std::string> buffer_posicao_bruta(10);
+    BufferCircular<std::string> buffer_posicao_tratada(100);
 
     // Vincula buffer + id para a tarefa de tratamento de sensores
     atr::tratamento_sensores(&buffer_posicao_bruta, &buffer_posicao_tratada, mtx_posicao_tratada, caminhao_id);
-
+    atr::leitura_posicao_config(&buffer_posicao_bruta,
+                            &buffer_posicao_tratada,
+                            mtx_posicao_tratada);
     // Thread 1: Tratamento de Sensores
     std::thread t_sens(
         atr::tarefa_tratamento_sensores_run,
         std::string("tcp://localhost:1883")   // URI completa para Paho C++
     );
 
+    std::thread t_leitura(atr::tarefa_leitura_posicao_run);
+
     std::cout << "[Main " << caminhao_id << "]  thread de tratamento_sensores.\n";
 
     // 4) Espera todas as threads (mantém o processo vivo)
     t_sens.join();
+    t_leitura.join();
 
     std::cout << "[Main " << caminhao_id << "] Processo encerrado.\n";
     return 0;

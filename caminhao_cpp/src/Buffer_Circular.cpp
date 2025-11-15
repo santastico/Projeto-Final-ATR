@@ -83,5 +83,6 @@ void BufferCircular<T>::limpar() {
     tail = 0;
     tamanho = 0;
 }
+template class BufferCircular<std::string>;
 
 #endif // BUFFERCIRCULAR_CPP
