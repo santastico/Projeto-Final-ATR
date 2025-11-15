@@ -146,15 +146,10 @@ void tarefa_logica_comando(int id, BufferCircular& buffer, NotificadorEventos& n
             cmd_dir  = 0;
         }
         else if (e_automatico) {
-            // Modo automático: anda para frente em linha reta
-            cmd_acel = (int)saida_ctrl.velocidade;       // <--- valor calculado pelo Controle
-            cmd_dir  = (int)saida_ctrl.posicao_angular;  // <--- valor calculado pelo Controle
-        }
-        else {
-            // Modo manual (ainda não integrado com Interface Local):
-            // por enquanto mantemos o veículo parado.
-            cmd_acel = 0;
-            cmd_dir  = 0;
+            // TODO: integrar com tarefa_controle_navegacao
+            // Por enquanto, anda para frente em linha reta com aceleração fixa.
+            cmd_acel = 30;   // 30% de aceleração
+            cmd_dir  = 0;    // direção reta
         }
 
         // Garante limites
@@ -164,10 +159,7 @@ void tarefa_logica_comando(int id, BufferCircular& buffer, NotificadorEventos& n
         // -------------------------------------------------------------
         // 4) Feedback de estado no BufferCircular
         // -------------------------------------------------------------
-        BufferCircular::EstadoVeiculo estado_atual;
-        estado_atual.e_defeito    = e_defeito;
-        estado_atual.e_automatico = e_automatico;
-        buffer.set_estado_veiculo(estado_atual);
+
 
         // -------------------------------------------------------------
         // -------------------------------------------------------------

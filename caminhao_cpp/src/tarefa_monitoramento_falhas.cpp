@@ -1,3 +1,4 @@
+// tarefa_monitoramento_falhas.cpp (VERSÃO REFORMULADA)
 #include <iostream>
 #include <string>
 #include <chrono>
@@ -13,23 +14,23 @@ namespace atr {
 
 // ------------------------------------------------------------------
 // Constantes de MQTT
-// ----------------------------------------------- ------------------
+// ------------------------------------------------------------------
 static std::string build_server_uri()
 {
     std::string addr = BROKER_ADDRESS;
 
     // Remove tcp:// se já existir
-    if (addr.rfind("tcp://", 0) == 0) {  
+    if (addr.rfind("tcp://", 0) == 0) {
         addr = addr.substr(6);          // remove "tcp://"
     }
 
     return "tcp://" + addr + ":" + std::to_string(BROKER_PORT);
 }
 
-
-static const std::string TOPIC_TEMP     = "atr/+/fault/temperature";
-static const std::string TOPIC_ELETRICA = "atr/+/fault/electrical";
-static const std::string TOPIC_HIDRAUL  = "atr/+/fault/hydraulic";
+// Tópicos de ENTRADA (sensores) que este módulo assina:
+static const std::string TOPIC_TEMP     = "atr/+/sensor/i_temperatura";
+static const std::string TOPIC_ELETRICA = "atr/+/sensor/i_falha_eletrica";
+static const std::string TOPIC_HIDRAUL  = "atr/+/sensor/i_falha_hidraulica";
 
 static const int QOS = 1;
 
@@ -55,18 +56,19 @@ public:
             mqtt::connect_options connOpts;
             connOpts.set_clean_session(true);
 
-            std::cout << "[Monitor " << m_id << "] Conectando em " 
+            std::cout << "[Monitor " << m_id << "] Conectando em "
                       << m_server_uri << "..." << std::endl;
 
             auto tok = m_client.connect(connOpts);
             tok->wait();
 
-            // Assina todos os tópicos de falha
+            // Assina todos os tópicos de interesse (sensores)
             m_client.subscribe(TOPIC_TEMP,     QOS)->wait();
             m_client.subscribe(TOPIC_ELETRICA, QOS)->wait();
             m_client.subscribe(TOPIC_HIDRAUL,  QOS)->wait();
 
-            std::cout << "[Monitor " << m_id << "] Conectado e assinando tópicos de falhas."
+            std::cout << "[Monitor " << m_id
+                      << "] Conectado e assinando tópicos de sensores de falha."
                       << std::endl;
 
             return true;
@@ -92,16 +94,16 @@ public:
                     continue;
                 }
 
-                const std::string topic = msg->get_topic();
+                const std::string topic   = msg->get_topic();
                 const std::string payload = msg->to_string();
 
-                if (topic.find("fault/temperature") != std::string::npos) {
+                if (topic.find("/sensor/i_temperatura") != std::string::npos) {
                     processar_temperatura(payload);
                 }
-                else if (topic.find("fault/electrical") != std::string::npos) {
+                else if (topic.find("/sensor/i_falha_eletrica") != std::string::npos) {
                     processar_eletrica(payload);
                 }
-                else if (topic.find("fault/hydraulic") != std::string::npos) {
+                else if (topic.find("/sensor/i_falha_hidraulica") != std::string::npos) {
                     processar_hidraulica(payload);
                 }
             }
@@ -120,42 +122,86 @@ private:
     std::string m_server_uri;
     mqtt::async_client m_client;
 
-    // ---- Tratamento das mensagens de falha (mantém tua lógica atual) ----
+    // ---- Tratamento das mensagens de falha ----
+    //
+    // Lógica Interna (função "montadora"):
+    //  - i_temperatura (int) → gera ALERTA ou DEFEITO térmico
+    //  - i_falha_eletrica (bool/int) → repassa diretamente como FALHA_ELETRICA
+    //  - i_falha_hidraulica (bool/int) → repassa diretamente como FALHA_HIDRAULICA
+    //
     void processar_temperatura(const std::string& payload)
     {
-        // Exemplo de lógica: adapte para a tua enum / thresholds
-        int temp = std::stoi(payload);
+        try {
+            int temp = std::stoi(payload);
 
-        if (temp > 90) {
-            m_notif.disparar_evento(TipoEvento::DEFEITO_TERMICO);
+            // Níveis de falha, conforme especificação:
+            //  - alerta_termico se T > 95°C
+            //  - falha_termica  se T > 120°C
+            if (temp > 120) {
+                m_notif.disparar_evento(TipoEvento::DEFEITO_TERMICO);
+                std::cout << "[Monitor " << m_id
+                          << "] DEFEITO TERMICO (T=" << temp << "°C)" << std::endl;
+            }
+            else if (temp > 95) {
+                m_notif.disparar_evento(TipoEvento::ALERTA_TERMICO);
+                std::cout << "[Monitor " << m_id
+                          << "] ALERTA TERMICO (T=" << temp << "°C)" << std::endl;
+            }
+            else {
+                // Volta para estado normal (sem alerta térmico)
+                m_notif.disparar_evento(TipoEvento::NORMALIZACAO);
+            }
         }
-        else if (temp > 80) {
-            m_notif.disparar_evento(TipoEvento::ALERTA_TERMICO);
-        }
-        else {
-            m_notif.disparar_evento(TipoEvento::NORMALIZACAO);
+        catch (const std::exception& e) {
+            std::cerr << "[Monitor " << m_id
+                      << "] Erro ao processar temperatura: " << e.what()
+                      << " (payload='" << payload << "')" << std::endl;
         }
     }
 
     void processar_eletrica(const std::string& payload)
     {
-        int estado = std::stoi(payload);
+        try {
+            int estado = std::stoi(payload);
 
-        if (estado != 0) {
-            m_notif.disparar_evento(TipoEvento::FALHA_ELETRICA);
-        } else {
-            m_notif.disparar_evento(TipoEvento::NORMALIZACAO);
+            if (estado != 0) {
+                // Qualquer valor diferente de zero é interpretado como falha elétrica
+                m_notif.disparar_evento(TipoEvento::FALHA_ELETRICA);
+                std::cout << "[Monitor " << m_id
+                          << "] FALHA ELETRICA detectada (valor=" << estado << ")"
+                          << std::endl;
+            } else {
+                // Normalização: limpa o evento de falha elétrica
+                m_notif.disparar_evento(TipoEvento::NORMALIZACAO);
+            }
+        }
+        catch (const std::exception& e) {
+            std::cerr << "[Monitor " << m_id
+                      << "] Erro ao processar falha eletrica: " << e.what()
+                      << " (payload='" << payload << "')" << std::endl;
         }
     }
 
     void processar_hidraulica(const std::string& payload)
     {
-        int estado = std::stoi(payload);
+        try {
+            int estado = std::stoi(payload);
 
-        if (estado != 0) {
-            m_notif.disparar_evento(TipoEvento::FALHA_HIDRAULICA);
-        } else {
-            m_notif.disparar_evento(TipoEvento::NORMALIZACAO);
+            if (estado != 0) {
+                // Qualquer valor diferente de zero é interpretado como falha hidráulica
+                m_notif.disparar_evento(TipoEvento::FALHA_HIDRAULICA);
+                std::cout << "[Monitor " << m_id
+                          << "] FALHA HIDRAULICA detectada (valor=" << estado << ")"
+                          << std::endl;
+            } else {
+                // Normalização: limpa o evento de falha hidráulica
+                m_notif.disparar_evento(TipoEvento::NORMALIZACAO);
+            }
+        }
+        catch (const std::exception& e) {
+            std::cerr << "[Monitor " << m_id
+                      << "] Erro ao processar falha hidraulica: " << e.what()
+                      << " (payload='" << payload << "')" << std::endl;
         }
     }
 };
@@ -176,4 +222,5 @@ void tarefa_monitoramento_falhas(int id, NotificadorEventos& notificador)
 
     monitor.loop();
 }
+
 } // namespace atr

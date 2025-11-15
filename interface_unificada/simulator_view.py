@@ -1,12 +1,15 @@
-# simulator_view.py
-# Simulação da Mina (somente dinâmica + falhas + ruído)
-# Planejamento de rota e controle de navegação são feitos no C++.
-# Aqui o simulador apenas:
-#  - recebe atuadores via MQTT (atr/{id}/act)
-#  - aplica a dinâmica aproximada
-#  - publica sensores brutos com ruído (atr/{id}/sensor/raw)
-#  - publica logs de simulação (atr/{id}/sim/log)
-#  - aceita comandos de simulação (falhas, ruído, reset, etc) via atr/{id}/sim/cmd
+# simulator_view.py (VERSÃO REFORMULADA)
+# Simulação da Mina (somente dinâmica + falhas + ruído padrão)
+#
+# Responsabilidades:
+#  - recebe atuadores via MQTT (atr/{id}/act) [o_aceleracao, o_direcao]
+#  - aplica modelo dinâmico simples de veículo
+#  - publica sensores brutos com RUÍDO PADRÃO (atr/{id}/sensor/raw)
+#  - publica sinais individuais de falha/temperatura para Monitoramento de Falhas:
+#       atr/{id}/sensor/i_temperatura      (int, °C)
+#       atr/{id}/sensor/i_falha_eletrica   ("0"/"1")
+#       atr/{id}/sensor/i_falha_hidraulica ("0"/"1")
+#  - aceita comandos de simulação (falhas, reset, etc) via atr/{id}/sim/cmd
 #  - suporta criação/remoção dinâmica de caminhões via:
 #       atr/sim/spawn  { "cmd": "spawn", "truck_id": "X" }
 #       atr/sim/remove { "cmd": "remove", "truck_id": "X" }
@@ -24,10 +27,15 @@ import paho.mqtt.client as mqtt
 # Parâmetros globais
 # ==========================
 
-DT_DEFAULT = 1.0 / 20.0  # 20 Hz
-V_MAX = 2.0              # velocidade máxima (unidades/s)
-A_MAX = 2.0              # aceleração máxima (unidades/s²)
-FRIC = 0.99              # atrito simples sobre a velocidade
+DT_DEFAULT      = 1.0 / 20.0  # 20 Hz
+V_MAX           = 2.0         # velocidade máxima (unidades/s)
+A_MAX           = 2.0         # aceleração máxima (unidades/s²)
+FRIC            = 0.99        # atrito simples sobre a velocidade
+
+# Ruído PADRÃO dos sensores (usuário não altera)
+POS_NOISE_STD   = 0.30        # desvio-padrão da posição (unidades)
+ANG_NOISE_STD   = 2.0         # desvio-padrão do ângulo (graus)
+TEMP_NOISE_STD  = 0.5         # desvio-padrão da temperatura (°C)
 
 def round_i(v: float) -> int:
     return int(round(v))
@@ -49,14 +57,9 @@ class TruckSim:
         self.y = 0.0
         self.ang = 0.0      # direção (graus, 0=leste)
         self.v = 0.0        # velocidade linear (unid/s)
-        self.temp = 70.0
+        self.temp = 70.0    # temperatura inicial do "motor"
 
-        # ruído (ligado via comandos)
-        self.sigma_pos = 0.0
-        self.sigma_ang = 0.0
-        self.sigma_temp = 0.0
-
-        # falhas
+        # falhas de sistema
         self.f_eletrica = False
         self.f_hidraulica = False
 
@@ -71,13 +74,18 @@ class TruckSim:
         self._lock = threading.Lock()
         self._last_cell = (round_i(self.x), round_i(self.y))
 
-        # tópicos
-        self.topic_cmd = f"atr/{self.id}/sim/cmd"
-        self.topic_act = f"atr/{self.id}/act"
-        self.topic_log = f"atr/{self.id}/sim/log"
+        # tópicos principais
+        self.topic_cmd    = f"atr/{self.id}/sim/cmd"
+        self.topic_act    = f"atr/{self.id}/act"
+        self.topic_log    = f"atr/{self.id}/sim/log"
         self.topic_sensor = f"atr/{self.id}/sensor/raw"
 
-        # assina comandos de simulação (falhas, ruído, reset, etc)
+        # tópicos individuais de temperatura e falhas (para Monitoramento de Falhas)
+        self.topic_temp   = f"atr/{self.id}/sensor/i_temperatura"
+        self.topic_fele   = f"atr/{self.id}/sensor/i_falha_eletrica"
+        self.topic_fhid   = f"atr/{self.id}/sensor/i_falha_hidraulica"
+
+        # assina comandos de simulação (falhas, reset, etc)
         self.client.message_callback_add(self.topic_cmd, self._on_cmd)
         self.client.subscribe(self.topic_cmd, qos=1)
 
@@ -93,21 +101,43 @@ class TruckSim:
     def _pub_log(self, text: str):
         self.client.publish(self.topic_log, text, qos=1)
 
+    def _pub_fault_and_temp(self):
+        """
+        Publica temperatura e flags de falha em tópicos individuais,
+        no formato esperado pelo módulo de Monitoramento de Falhas.
+        """
+        # Temperatura como inteiro (°C)
+        temp_int = int(round(self.temp))
+        self.client.publish(self.topic_temp, str(temp_int), qos=1)
+
+        # Falhas como "0"/"1"
+        self.client.publish(self.topic_fele, "1" if self.f_eletrica   else "0", qos=1)
+        self.client.publish(self.topic_fhid, "1" if self.f_hidraulica else "0", qos=1)
+
     def _pub_sensor_once(self):
+        """
+        Publica pacote de sensores brutos com RUÍDO padronizado em um único JSON,
+        compatível com tarefa_tratamento_sensores.cpp.
+        """
         payload = {
             "truck_id": self.id,
             "seq": self.seq,
             "ts": time.time(),
-            "i_posicao_x": self.x + random.gauss(0, self.sigma_pos),
-            "i_posicao_y": self.y + random.gauss(0, self.sigma_pos),
-            "i_angulo_x": self.ang + random.gauss(0, self.sigma_ang),
-            "i_temperatura": self.temp + random.gauss(0, self.sigma_temp),
+            "i_posicao_x": self.x + random.gauss(0.0, POS_NOISE_STD),
+            "i_posicao_y": self.y + random.gauss(0.0, POS_NOISE_STD),
+            "i_angulo_x":  self.ang + random.gauss(0.0, ANG_NOISE_STD),
+            "i_temperatura": self.temp + random.gauss(0.0, TEMP_NOISE_STD),
             "i_falha_eletrica": self.f_eletrica,
             "i_falha_hidraulica": self.f_hidraulica,
             "dt": self.dt,
         }
         self.seq += 1
+
+        # Publicação do pacote bruto (posição + temperatura + falhas)
         self.client.publish(self.topic_sensor, json.dumps(payload), qos=1)
+
+        # Publica também nos tópicos individuais consumidos por tarefa_monitoramento_falhas
+        self._pub_fault_and_temp()
 
     # ---------- comandos de simulação ----------
 
@@ -117,20 +147,27 @@ class TruckSim:
             c = cmd.get("cmd", "").strip()
 
             with self._lock:
-                if c == "set_noise":
-                    self.sigma_pos = float(cmd.get("sigma_pos", self.sigma_pos))
-                    self.sigma_ang = float(cmd.get("sigma_ang", self.sigma_ang))
-                    self.sigma_temp = float(cmd.get("sigma_temp", self.sigma_temp))
+                # IMPORTANTE: comando de ruído foi removido (ruído é fixo)
+                # if c == "set_noise":  --> NÃO EXISTE MAIS
 
-                elif c == "set_fault":
+                if c == "set_fault":
+                    # Injeção manual de falhas em caminhão específico
                     if "eletrica" in cmd:
                         self.f_eletrica = bool(cmd["eletrica"])
                     if "hidraulica" in cmd:
                         self.f_hidraulica = bool(cmd["hidraulica"])
+                    self._pub_log(
+                        f"caminhão {self.id}: falhas -> eletrica={self.f_eletrica}, "
+                        f"hidraulica={self.f_hidraulica}"
+                    )
+                    # Atualiza imediatamente os tópicos de falha/temperatura
+                    self._pub_fault_and_temp()
 
                 elif c == "clear_faults":
                     self.f_eletrica = False
                     self.f_hidraulica = False
+                    self._pub_log(f"caminhão {self.id}: falhas limpas")
+                    self._pub_fault_and_temp()
 
                 elif c == "temp_step":
                     delta = float(cmd.get("delta", 0.0))
@@ -138,6 +175,7 @@ class TruckSim:
                     self._pub_log(
                         f"caminhão {self.id}: temperatura {round(self.temp,1)}°C"
                     )
+                    # Publica sensores + falhas/temperatura atualizados
                     self._pub_sensor_once()
 
                 elif c == "reset_position":
@@ -214,20 +252,21 @@ class TruckSim:
         self.x += self.v * self.dt * math.cos(ang_rad)
         self.y += self.v * self.dt * math.sin(ang_rad)
 
-        # (opcional) dinâmica simplificada de temperatura
-        # aumenta levemente com a velocidade
+        # dinâmica simplificada de temperatura:
+        # - aumenta um pouco com a velocidade
+        # - resfria lentamente quando parado
         self.temp += 0.01 * self.v * self.dt
-        # resfria um pouco quando parado
         if self.v < 0.1:
             self.temp -= 0.005 * self.dt
-        self.temp = max(-50.0, min(self.temp, 200.0))
+        self.temp = max(-50.0, min(self.temp, 250.0))
 
         # publica somente em mudança de célula (reduz tráfego)
         cell_now = (round_i(self.x), round_i(self.y))
         if cell_now != self._last_cell:
             self._last_cell = cell_now
             self._pub_log(
-                f"caminhão {self.id} deslocando ({cell_now[0]},{cell_now[1]}) , angulo: {round(self.ang,1)}°"
+                f"caminhão {self.id} deslocando ({cell_now[0]},{cell_now[1]}) , "
+                f"angulo: {round(self.ang,1)}°"
             )
             self._pub_sensor_once()
 
