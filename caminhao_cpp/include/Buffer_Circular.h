@@ -5,6 +5,13 @@
 #include <mutex>
 #include <condition_variable>
 
+struct EstadoVeiculo {
+    bool e_defeito    = false;
+    bool e_automatico = false;
+};
+
+void set_estado_veiculo(const EstadoVeiculo& est);
+
 class BufferCircular {
 public:
     // Estrutura dos dados tratados (posição e ângulo)
