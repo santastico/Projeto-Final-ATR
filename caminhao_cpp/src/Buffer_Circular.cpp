@@ -1,7 +1,7 @@
 #ifndef BUFFERCIRCULAR_CPP
 #define BUFFERCIRCULAR_CPP
 
-#include "BufferCircular.h"
+#include "Buffer_Circular.h"
 
 // Construtor: aloca array e inicializa índices
 template <typename T>
