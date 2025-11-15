@@ -46,6 +46,4 @@ public:
     void limpar();
 };
 
-#include "BufferCircular.cpp"  // Incluir implementação do template
-
 #endif // BUFFERCIRCULAR_H
