@@ -24,6 +24,65 @@ def remover_caminhao(client, truck_id):
     payload = {"cmd": "remove", "truck_id": truck_id}
     client.publish("atr/sim/remove", json.dumps(payload), qos=1)
     print(f"Comando de remoção enviado para caminhão {truck_id}")
+    
+def listar_caminhoes_ativos(client, timeout=1.0):
+    lista_recebida = []
+
+    def on_message(_client, _userdata, msg):
+        try:
+            dados = json.loads(msg.payload.decode())
+            lista_recebida.append(dados)
+        except Exception as e:
+            print(f"[CLI] Erro ao decodificar resposta: {e}")
+
+    # Subscreve temporariamente ao tópico de resposta
+    client.subscribe("atr/sim/list/response", qos=1)
+    client.on_message = on_message  # sobrescreve callback só para este momento
+
+    # Limpa fila MQTT antiga (importante em ambientes concorrentes)
+    client.loop_start()
+    # Envia comando para listar caminhões ativos
+    client.publish("atr/sim/list", "")
+
+    # Aguarda resposta (timeout)
+    esperou = 0
+    while not lista_recebida and esperou < timeout:
+        time.sleep(0.1)
+        esperou += 0.1
+
+    client.loop_stop()
+    client.unsubscribe("atr/sim/list/response")
+    client.on_message = None  # Remove handler após uso
+
+    if not lista_recebida:
+        print("\n[CLI] Nenhuma resposta recebida (simulador pode não estar ativo ou sem caminhões).\n")
+        return
+
+    # Exibe de forma amigável os caminhões ativos
+    lista = lista_recebida[0]
+    if not lista:
+        print("\n[CLI] Nenhum caminhão ativo.\n")
+        return
+    print("\n  Caminhões ativos:")
+    for cam in lista:
+        print(
+            f"    - ID={cam['id']:<4} Pos=({cam['x']:.1f}, {cam['y']:.1f}) "
+            f"Ang={cam['ang']:<5.1f}°  Temp={cam['temp']:.1f}°C "
+            f"V={cam['v']:.2f}  FalhaEle={cam['f_eletrica']}  FalhaHid={cam['f_hidraulica']}"
+        )
+    print("")
+    
+def injetar_falha_eletrica(client, truck_id):
+    payload = {"cmd": "set_fault", "eletrica": True}
+    topico = f"atr/{truck_id}/sim/cmd"
+    client.publish(topico, json.dumps(payload), qos=1)
+    print(f"[CLI] Falha elétrica injetada no caminhão {truck_id}")
+
+def injetar_falha_hidraulica(client, truck_id):
+    payload = {"cmd": "set_fault", "hidraulica": True}
+    topico = f"atr/{truck_id}/sim/cmd"
+    client.publish(topico, json.dumps(payload), qos=1)
+    print(f"[CLI] Falha hidráulica injetada no caminhão {truck_id}")
 
 def main():
     client = mqtt.Client(client_id=f"cli_gestao_{int(time.time())}")
@@ -35,6 +94,9 @@ def main():
         try:
             print("1 - Criar caminhão")
             print("2 - Remover caminhão")
+            print("3 - Listar caminhões ativos")
+            print("4 - Injetar falha elétrica")
+            print("5 - Injetar falha hidráulica")
             print("ENTER - Sair")
             op = input("Escolha: ").strip()
             if not op:
@@ -48,6 +110,16 @@ def main():
             elif op == "2":
                 truck_id = input("ID do caminhão para remover: ").strip()
                 remover_caminhao(client, truck_id)
+            elif op == "3":
+                listar_caminhoes_ativos(client)
+            elif op == "4":
+                truck_id = input("ID do caminhão: ").strip()
+                injetar_falha_eletrica(client, truck_id)
+
+            elif op == "5":
+                truck_id = input("ID do caminhão: ").strip()
+                injetar_falha_hidraulica(client, truck_id)
+
         except Exception as e:
             print(f"Erro: {e}")
     client.disconnect()

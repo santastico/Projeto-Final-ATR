@@ -336,8 +336,11 @@ def start_simulator(broker_host: str = "localhost", trucks=()):
 
     # callback REMOVE dinâmico
     def on_remove(_c, _u, msg):
+        print(f"DEBUG: [on_remove] callback chamado! payload: {msg.payload}")
         try:
             data = json.loads(msg.payload.decode())
+            print(f"DEBUG: [on_remove] JSON recebido: {data}")
+            print(f"DEBUG: [on_remove] caminhões ativos: {[s.id for s in sims]}")
             if data.get("cmd") == "remove":
                 tids = data.get("truck_id")
                 if isinstance(tids, str):
@@ -345,9 +348,12 @@ def start_simulator(broker_host: str = "localhost", trucks=()):
                 for tid in tids:
                     tid = str(tid)
                     for sim in list(sims):
+                        print(f"DEBUG: analisando sim.id={sim.id}, candidato para remoção={tid}")
                         if sim.id == tid:
+                            print(f"DEBUG: Removendo caminhão {tid}")
                             sim.stop()
                             sims.remove(sim)
+                            print(f"DEBUG: Lista de caminhões após remoção: {[s.id for s in sims]}")
                             client.publish(
                                 f"atr/{tid}/sim/log",
                                 f"caminhão {tid}: removido",
@@ -358,7 +364,30 @@ def start_simulator(broker_host: str = "localhost", trucks=()):
 
     client.message_callback_add("atr/sim/remove", on_remove)
     client.subscribe("atr/sim/remove", qos=1)
+    print("DEBUG: [simulator] Registrado callback on_remove para atr/sim/remove")
 
+    # callback LIST - listar todos caminhões ativos
+    def on_list(_c, _u, msg):
+        # Monta estado de todos caminhões ativos
+        lista = []
+        for s in sims:
+            estado = {
+                "id": s.id,
+                "x": s.x,
+                "y": s.y,
+                "ang": s.ang,
+                "temp": s.temp,
+                "f_eletrica": s.f_eletrica,
+                "f_hidraulica": s.f_hidraulica,
+                "v": s.v,
+            }
+            lista.append(estado)
+        # Publica lista única (JSON array) em tópico de resposta
+        client.publish("atr/sim/list/response", json.dumps(lista), qos=1)
+        print(f"[LIST] Respondeu lista de {len(lista)} caminhão(ões) em atr/sim/list/response")
+
+    client.message_callback_add("atr/sim/list", on_list)
+    client.subscribe("atr/sim/list", qos=1)
     return client, sims
 
 
@@ -369,7 +398,7 @@ def start_simulator(broker_host: str = "localhost", trucks=()):
 if __name__ == "__main__":
     broker = os.environ.get("BROKER_HOST", "localhost")
     # padrão: inicia com 1 caminhão; pode iniciar vazio usando trucks=()
-    client, sims = start_simulator(broker_host=broker, trucks=("1",))
+    client, sims = start_simulator(broker_host=broker, trucks=())
 
     try:
         while True:
