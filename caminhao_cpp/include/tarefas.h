@@ -3,6 +3,7 @@
 #include <string>
 #include <mutex>
 #include "Buffer_Circular.h"
+#include "Notificador_Eventos.h"
 
 namespace atr {
 
@@ -23,5 +24,7 @@ void leitura_posicao_config(BufferCircular<std::string>* buffer_bruta,
 // thread
 void tarefa_leitura_posicao_run();
 
+void tarefa_monitoramento_falhas(int caminhao_id,
+                                 NotificadorEventos& notificador);
+
 } // namespace atr
-// namespace atr

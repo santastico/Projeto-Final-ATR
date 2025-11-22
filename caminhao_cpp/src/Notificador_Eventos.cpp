@@ -23,6 +23,7 @@
 #include <mutex>
 #include <condition_variable>
 
+namespace atr {
 NotificadorEventos::NotificadorEventos() 
     : m_evento_ativo(false), m_tipo_atual(TipoEvento::NENHUM) {}
 
@@ -50,3 +51,4 @@ void NotificadorEventos::disparar_evento(TipoEvento tipo) {
     // Notifica todas as threads interessadas (Logica, Controle, Coletor)
     m_cv.notify_all();
 }
+}//namespace atr
