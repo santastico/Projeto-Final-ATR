@@ -98,77 +98,77 @@ static void processar_mensagem(const std::string& texto_json)
         return;
     }
 
-    // 1) grava JSON BRUTO no buffer_posicao_bruta
-    if (!buffer_posicao_bruta->escrever(texto_json)) {
-        std::cerr << "[tratamento_sensores] buffer_posicao_bruta CHEIO, amostra descartada.\n";
-    }
+    // 1) Tenta gravar JSON BRUTO no buffer_posicao_bruta
+    // Se falhar (cheio), ignoramos o retorno aqui pois vamos tratar no passo 2
+    buffer_posicao_bruta->escrever(texto_json);
 
-    // 2) converte o texto para JSON
-    json dados = json::parse(texto_json, nullptr, false);
-    if (dados.is_discarded()) {
-        std::cerr << "[tratamento_sensores] JSON invalido.\n";
-        return;
-    }
+    // 2) Verifica se encheu (Lógica de Batch / Decimação)
+    // O buffer bruto deve ter sido inicializado com capacidade = 10 no main
+    if (buffer_posicao_bruta->estaCheio()) {
+        
+        // Variáveis para acumular a média do lote
+        double soma_x = 0.0, soma_y = 0.0, soma_ang = 0.0, soma_temp = 0.0;
+        int count = 0;
+        
+        // Armazena o último JSON para usar como base (metadata como truck_id)
+        json ultimo_json_valido;
+        std::string item_retirado;
 
-    // opcional: confere se truck_id bate com o caminhao_id_global
-    int truck_id_json = 0;
-    if (dados.contains("truck_id")) {
-        if (dados["truck_id"].is_number_integer()) {
-            truck_id_json = dados["truck_id"].get<int>();
-        } else if (dados["truck_id"].is_string()) {
+        // 3) Esvazia o buffer e acumula valores
+        while (buffer_posicao_bruta->retirar(item_retirado)) {
             try {
-                truck_id_json = std::stoi(dados["truck_id"].get<std::string>());
+                json dados = json::parse(item_retirado, nullptr, false);
+                if (!dados.is_discarded()) {
+                    // Acumula valores
+                    soma_x += dados.value("i_posicao_x", 0.0);
+                    soma_y += dados.value("i_posicao_y", 0.0);
+                    soma_ang += dados.value("i_angulo_x", 0.0);
+                    soma_temp += dados.value("i_temperatura", 0.0);
+                    
+                    ultimo_json_valido = dados; // Guarda o último para copiar metadados depois
+                    count++;
+                }
             } catch (...) {
-                truck_id_json = 0;
+                // Ignora JSON malformado neste lote
             }
         }
-    }
 
+        // 4) Se processou itens válidos, calcula média e escreve no tratado
+        if (count > 0) {
+            double media_x = soma_x / count;
+            double media_y = soma_y / count;
+            double media_ang = soma_ang / count;
+            double media_temp = soma_temp / count;
 
-    // 3) lê valores BRUTOS (posições e ângulo)
-    //    - podem vir como double no JSON, então fazemos round -> int
-    double x_lido   = dados.value("i_posicao_x", 0.0);
-    double y_lido   = dados.value("i_posicao_y", 0.0);
-    double ang_lido = dados.value("i_angulo_x",  0.0);
-    double temp_lido = dados.value("i_temperatura", 0.0);
+            // Função auxiliar de arredondamento (3 casas)
+            auto arred3 = [](double v) { return std::round(v * 1000.0) / 1000.0; };
 
-    double x_bruto   = static_cast<int>(std::round(x_lido));
-    double y_bruto   = static_cast<int>(std::round(y_lido));
-    double ang_bruto = static_cast<int>(std::round(ang_lido));
-    double temp_bruto = static_cast<int>(std::round(temp_lido));
+            // Monta JSON Tratado usando o último como base
+            json dados_filtrados = ultimo_json_valido;
+            dados_filtrados["f_posicao_x"]   = arred3(media_x);
+            dados_filtrados["f_posicao_y"]   = arred3(media_y);
+            dados_filtrados["f_angulo_x"]    = arred3(media_ang);
+            dados_filtrados["f_temperatura"] = arred3(media_temp);
+            dados_filtrados["ordem_media"]   = count; // Indica quantos itens compuseram esta média
 
-    // 4) aplica média móvel inteira
-    int x_filtrado   = media_movel(janela_x,   x_bruto);
-    int y_filtrado   = media_movel(janela_y,   y_bruto);
-    int ang_filtrado = media_movel(janela_ang, ang_bruto);
-    int temp_filtrada = media_movel(janela_temp, temp_bruto);
+            std::string texto_filtrado = dados_filtrados.dump();
 
-    auto arred3 = [](double v) {
-        return std::round(v * 1000.0) / 1000.0;
-    };
+            // 5) Escreve no buffer tratado (com Mutex)
+            {
+                std::lock_guard<std::mutex> trava(*mtx_posicao_tratada_ptr);
+                // Se buffer tratado encher, descartamos a amostra mais antiga ou ignoramos (aqui ignoramos)
+                if (!buffer_posicao_tratada->escrever(texto_filtrado)) {
+                    std::cerr << "[tratamento_sensores] buffer_posicao_tratada CHEIO ao gravar lote.\n";
+                }
+            }
 
-    // 5) monta JSON FILTRADO copiando tudo do original e
-    //    acrescentando campos filtrados como inteiros
-    json dados_filtrados = dados;
-    dados_filtrados["f_posicao_x"]  = arred3(x_filtrado);
-    dados_filtrados["f_posicao_y"]  = arred3(y_filtrado);
-    dados_filtrados["f_angulo_x"]   = arred3(ang_filtrado);
-    dados_filtrados["f_temperatura"] = arred3(temp_filtrada);
-    dados_filtrados["ordem_media"]  = static_cast<int>(ORDEM_MEDIA);
-
-    std::string texto_filtrado = dados_filtrados.dump();
-
-    // 6) escreve JSON FILTRADO no buffer_posicao_tratada
-    {
-        std::lock_guard<std::mutex> trava(*mtx_posicao_tratada_ptr);
-        if (!buffer_posicao_tratada->escrever(texto_filtrado)) {
-            std::cerr << "[tratamento_sensores] buffer_posicao_tratada CHEIO, amostra TRATADA descartada.\n";
+            std::cout << "[LOTE PROCESSADO] Média de " << count << " amostras gravada no Buffer Tratado.\n";
+            // std::cout << "[FILTRADO] " << texto_filtrado << "\n";
         }
     }
-
-    std::cout << "[BRUTO->BUFFER] " << texto_json << std::endl;
-    std::cout << "[FILTRADO->BUFFER] " << texto_filtrado << std::endl;
+    // Se não estava cheio, apenas acumulamos (já foi escrito no passo 1)
 }
+
 
 
 // ---------------------------------------------------------------------
