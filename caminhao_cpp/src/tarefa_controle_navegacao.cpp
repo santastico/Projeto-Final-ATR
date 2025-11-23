@@ -102,7 +102,7 @@ void tarefa_controle_navegacao_run()
         return;
     }
 
-    constexpr auto PERIODO_CONTROLE = std::chrono::milliseconds(500);
+    constexpr auto PERIODO_CONTROLE = std::chrono::milliseconds(10000);
 
     std::string dado;
 
