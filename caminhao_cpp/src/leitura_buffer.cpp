@@ -54,7 +54,7 @@ void tarefa_leitura_posicao_run()
         // ----------------------------------------------------------
         {
             std::lock_guard<std::mutex> lock(*mtx_posicao_tratada_ptr);
-            if (buffer_posicao_tratada_leitura->retirar(dado)) {
+            if (buffer_posicao_tratada_leitura->ler(dado)) {
                 std::cout << "*** [FILTRADO] ***\n";
                 std::cout << dado << "\n";
             }
