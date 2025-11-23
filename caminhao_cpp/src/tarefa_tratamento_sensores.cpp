@@ -36,7 +36,7 @@ static const std::size_t ORDEM_MEDIA = 5;
 static std::deque<int> janela_x;
 static std::deque<int> janela_y;
 static std::deque<int> janela_ang;
-
+static std::deque<int> janela_temp;
 
 // ---------------------------------------------------------------------
 // Função chamada pelo main para configurar a tarefa
@@ -124,33 +124,37 @@ static void processar_mensagem(const std::string& texto_json)
         }
     }
 
-    if (truck_id_json != 0 && truck_id_json != caminhao_id_global) {
-        // mensagem de outro caminhão: ignora
-        return;
-    }
 
     // 3) lê valores BRUTOS (posições e ângulo)
     //    - podem vir como double no JSON, então fazemos round -> int
     double x_lido   = dados.value("i_posicao_x", 0.0);
     double y_lido   = dados.value("i_posicao_y", 0.0);
     double ang_lido = dados.value("i_angulo_x",  0.0);
+    double temp_lido = dados.value("i_temperatura", 0.0);
 
-    int x_bruto   = static_cast<int>(std::round(x_lido));
-    int y_bruto   = static_cast<int>(std::round(y_lido));
-    int ang_bruto = static_cast<int>(std::round(ang_lido));
+    double x_bruto   = static_cast<int>(std::round(x_lido));
+    double y_bruto   = static_cast<int>(std::round(y_lido));
+    double ang_bruto = static_cast<int>(std::round(ang_lido));
+    double temp_bruto = static_cast<int>(std::round(temp_lido));
 
     // 4) aplica média móvel inteira
     int x_filtrado   = media_movel(janela_x,   x_bruto);
     int y_filtrado   = media_movel(janela_y,   y_bruto);
     int ang_filtrado = media_movel(janela_ang, ang_bruto);
+    int temp_filtrada = media_movel(janela_temp, temp_bruto);
+
+    auto arred3 = [](double v) {
+        return std::round(v * 1000.0) / 1000.0;
+    };
 
     // 5) monta JSON FILTRADO copiando tudo do original e
     //    acrescentando campos filtrados como inteiros
     json dados_filtrados = dados;
-    dados_filtrados["f_posicao_x"] = x_filtrado;
-    dados_filtrados["f_posicao_y"] = y_filtrado;
-    dados_filtrados["f_angulo_x"]  = ang_filtrado;
-    dados_filtrados["ordem_media"] = static_cast<int>(ORDEM_MEDIA);
+    dados_filtrados["f_posicao_x"]  = arred3(x_filtrado);
+    dados_filtrados["f_posicao_y"]  = arred3(y_filtrado);
+    dados_filtrados["f_angulo_x"]   = arred3(ang_filtrado);
+    dados_filtrados["f_temperatura"] = arred3(temp_filtrada);
+    dados_filtrados["ordem_media"]  = static_cast<int>(ORDEM_MEDIA);
 
     std::string texto_filtrado = dados_filtrados.dump();
 
@@ -178,12 +182,10 @@ void tarefa_tratamento_sensores_run(const std::string& broker_uri)
         return;
     }
 
-    // client_id único para este caminhão
-    std::string id_cliente = "tratamento_sensores_" + std::to_string(caminhao_id_global);
+    std::string id_cliente = "tratamento_sensores_all";
+    const std::string topico = "atr/+/sensor/raw";   // único tópico, com wildcard
 
-    // cria cliente MQTT (Paho async)
     mqtt::async_client cliente(broker_uri, id_cliente);
-
     mqtt::connect_options opcoes;
     opcoes.set_clean_session(true);
 
@@ -192,16 +194,10 @@ void tarefa_tratamento_sensores_run(const std::string& broker_uri)
         cliente.connect(opcoes)->wait();
         std::cout << "[tratamento_sensores] Conectado.\n";
 
-        // tópico publicado pelo simulator_view.py:
-        // atr/<id>/sensor/raw
-        std::string topico =
-            "atr/" + std::to_string(caminhao_id_global) + "/sensor/raw";
-
         cliente.start_consuming();
         cliente.subscribe(topico, 1)->wait();
         std::cout << "[tratamento_sensores] Assinado topico " << topico << "\n";
 
-        // loop infinito da tarefa
         while (true) {
             auto msg = cliente.consume_message();
             if (!msg) {
@@ -211,12 +207,10 @@ void tarefa_tratamento_sensores_run(const std::string& broker_uri)
                 }
                 continue;
             }
-
             std::string texto = msg->to_string();
             processar_mensagem(texto);
         }
 
-        // encerramento limpo
         cliente.stop_consuming();
         cliente.disconnect()->wait();
     }

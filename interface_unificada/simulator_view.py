@@ -27,7 +27,7 @@ import paho.mqtt.client as mqtt
 # Parâmetros globais
 # ==========================
 
-DT_DEFAULT      = 1.0 / 20.0  # 20 Hz
+DT_DEFAULT      = 2.0  # 20 Hz
 V_MAX           = 2.0         # velocidade máxima (unidades/s)
 A_MAX           = 2.0         # aceleração máxima (unidades/s²)
 FRIC            = 0.99        # atrito simples sobre a velocidade
@@ -49,7 +49,7 @@ class TruckSim:
     def __init__(self, client: mqtt.Client, truck_id: str, hz: float = 20.0):
         self.client = client
         self.id = str(truck_id)
-        self.dt = 1.0 / hz
+        self.dt = DT_DEFAULT
         self.seq = 0
 
         # estado "real"
@@ -119,14 +119,22 @@ class TruckSim:
         Publica pacote de sensores brutos com RUÍDO padronizado em um único JSON,
         compatível com tarefa_tratamento_sensores.cpp.
         """
+        pos_x = self.x + random.gauss(0.0, POS_NOISE_STD)
+        pos_y = self.y + random.gauss(0.0, POS_NOISE_STD)
+        ang   = self.ang + random.gauss(0.0, ANG_NOISE_STD)
+        temp  = self.temp + random.gauss(0.0, TEMP_NOISE_STD)
+
+        def r3(v):
+            return round(v, 3)   # 3 casas decimais
+
         payload = {
             "truck_id": self.id,
             "seq": self.seq,
             "ts": time.time(),
-            "i_posicao_x": self.x + random.gauss(0.0, POS_NOISE_STD),
-            "i_posicao_y": self.y + random.gauss(0.0, POS_NOISE_STD),
-            "i_angulo_x":  self.ang + random.gauss(0.0, ANG_NOISE_STD),
-            "i_temperatura": self.temp + random.gauss(0.0, TEMP_NOISE_STD),
+            "i_posicao_x": r3(pos_x),
+            "i_posicao_y": r3(pos_y),
+            "i_angulo_x": r3(ang),
+            "i_temperatura": r3(temp),
             "i_falha_eletrica": self.f_eletrica,
             "i_falha_hidraulica": self.f_hidraulica,
             "dt": self.dt,
@@ -268,7 +276,7 @@ class TruckSim:
                 f"caminhão {self.id} deslocando ({cell_now[0]},{cell_now[1]}) , "
                 f"angulo: {round(self.ang,1)}°"
             )
-            self._pub_sensor_once()
+            
 
     # ---------- loop da thread ----------
 
@@ -277,6 +285,7 @@ class TruckSim:
             t0 = time.time()
             with self._lock:
                 self._step()
+                self._pub_sensor_once()
             dt_real = time.time() - t0
             time.sleep(max(0.0, self.dt - dt_real))
 
