@@ -27,4 +27,13 @@ void tarefa_leitura_posicao_run();
 void tarefa_monitoramento_falhas(int caminhao_id,
                                  NotificadorEventos& notificador);
 
+// configuração da tarefa de controle de navegação
+void controle_navegacao_config(BufferCircular<std::string>* buffer_tratada,
+                               std::mutex& mtx,
+                               NotificadorEventos& notificador);
+
+// thread do controle de navegação
+void tarefa_controle_navegacao_run();
+
+
 } // namespace atr

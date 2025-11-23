@@ -55,11 +55,20 @@ int main() {
 
     std::thread t_leitura(atr::tarefa_leitura_posicao_run);
 
+    //Thread 2 : Monitoramento de Falhas
     std::thread t_monitor(
         atr::tarefa_monitoramento_falhas,
         caminhao_id,
         std::ref(notificador)             // passa por referência
     );
+
+    //Thread 3: Controle de Navegação
+    atr::controle_navegacao_config(&buffer_posicao_tratada,
+                               mtx_posicao_tratada,
+                               notificador);
+
+    std::thread t_ctrl_nav(atr::tarefa_controle_navegacao_run);
+
 
     std::cout << "[Main " << caminhao_id << "]  thread de tratamento_sensores.\n";
 
@@ -67,6 +76,7 @@ int main() {
     t_sens.join();
     t_leitura.join();
     t_monitor.join();
+    t_ctrl_nav.join();
 
     std::cout << "[Main " << caminhao_id << "] Processo encerrado.\n";
     return 0;
