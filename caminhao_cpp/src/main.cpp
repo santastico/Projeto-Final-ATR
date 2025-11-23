@@ -10,6 +10,7 @@
  */
 
 #include <iostream>
+#include <cstdlib> // para std::getenv
 #include <thread>
 #include <string>
 #include <mutex>
@@ -21,7 +22,14 @@
 
 int main() {
     // 1) Lê ID do caminhão (opcional). Se não vier, usa 1 para não falhar no Docker.
+    // Padrão: 1 (para teste local rápido)
     int caminhao_id = 1;
+    // 1. Tenta ler de variável de ambiente (Melhor para Docker)
+    const char* env_id = std::getenv("CAMINHAO_ID");
+    if (env_id) {
+        caminhao_id = std::stoi(env_id);
+    } 
+
     std::mutex mtx_posicao_tratada;
     std::cout << "--- Iniciando Caminhao Embarcado ID: " << caminhao_id << " ---\n";
 
