@@ -5,6 +5,7 @@
 #include <mqtt/async_client.h>
 #include "Notificador_Eventos.h"
 #include "tarefas.h"
+#include "config.h" // Inclui para usar obter_broker_uri()
 
 namespace atr {
 
@@ -12,12 +13,18 @@ void tarefa_monitoramento_falhas(int caminhao_id, NotificadorEventos& notificado
 {
     using namespace std::chrono_literals;
 
-    // 1) Endereço do broker MQTT (dentro do container)
-    const std::string broker_uri = "tcp://localhost:1883";
+    // 1) Endereço do broker MQTT (agora dinâmico via config.h)
+    const std::string broker_uri = obter_broker_uri();
 
-    // 2) Cria o cliente MQTT com um client_id único
+    // 2) Cria o cliente MQTT com um client_id único para evitar conflitos
     std::string client_id = "monitor_falhas_" + std::to_string(caminhao_id);
     mqtt::async_client cli(broker_uri, client_id);
+
+    // Variáveis de estado para evitar flood de eventos de Normalização
+    bool estado_alerta_termico = false;
+    bool estado_defeito_termico = false;
+    bool estado_falha_eletrica = false;
+    bool estado_falha_hidraulica = false;
 
     // ---------------- Conexão MQTT ----------------
     try {
@@ -41,7 +48,7 @@ void tarefa_monitoramento_falhas(int caminhao_id, NotificadorEventos& notificado
     }
 
     // ---------------- Tópicos dos sensores ----------------
-    // Segue o mesmo padrão do atr/1/sensor/raw
+    // Segue o padrão atr/{id}/sensor/...
     std::string base = "atr/" + std::to_string(caminhao_id) + "/sensor/";
     std::string topic_temp     = base + "i_temperatura";
     std::string topic_eletrica = base + "i_falha_eletrica";
@@ -80,19 +87,28 @@ void tarefa_monitoramento_falhas(int caminhao_id, NotificadorEventos& notificado
                 int temp = std::stoi(payload);
 
                 if (temp > 120) {
-                    notificador.disparar_evento(TipoEvento::DEFEITO_TERMICO);
-                    std::cout << "[Monitor " << caminhao_id
-                              << "] DEFEITO TERMICO (T=" << temp << "°C)\n";
+                    if (!estado_defeito_termico) {
+                        notificador.disparar_evento(TipoEvento::DEFEITO_TERMICO);
+                        std::cout << "[Monitor " << caminhao_id << "] DEFEITO TERMICO (T=" << temp << "°C)\n";
+                        estado_defeito_termico = true;
+                    }
                 }
                 else if (temp > 95) {
-                    notificador.disparar_evento(TipoEvento::ALERTA_TERMICO);
-                    std::cout << "[Monitor " << caminhao_id
-                              << "] ALERTA TERMICO (T=" << temp << "°C)\n";
+                    if (!estado_alerta_termico) {
+                        notificador.disparar_evento(TipoEvento::ALERTA_TERMICO);
+                        std::cout << "[Monitor " << caminhao_id << "] ALERTA TERMICO (T=" << temp << "°C)\n";
+                        estado_alerta_termico = true;
+                    }
+                    estado_defeito_termico = false; // Saiu do defeito
                 }
                 else {
-                    notificador.disparar_evento(TipoEvento::NORMALIZACAO);
-                    std::cout << "[Monitor " << caminhao_id
-                              << "] Temp normal (T=" << temp << "°C)\n";
+                    // Se estava em alerta ou defeito, normalizou
+                    if (estado_alerta_termico || estado_defeito_termico) {
+                        notificador.disparar_evento(TipoEvento::NORMALIZACAO);
+                        std::cout << "[Monitor " << caminhao_id << "] Temp normalizada (T=" << temp << "°C)\n";
+                        estado_alerta_termico = false;
+                        estado_defeito_termico = false;
+                    }
                 }
             }
             catch (...) {
@@ -105,13 +121,17 @@ void tarefa_monitoramento_falhas(int caminhao_id, NotificadorEventos& notificado
             bool falha = (payload == "1" || payload == "true");
 
             if (falha) {
-                notificador.disparar_evento(TipoEvento::FALHA_ELETRICA);
-                std::cout << "[Monitor " << caminhao_id
-                          << "] FALHA ELETRICA detectada.\n";
+                if (!estado_falha_eletrica) {
+                    notificador.disparar_evento(TipoEvento::FALHA_ELETRICA);
+                    std::cout << "[Monitor " << caminhao_id << "] FALHA ELETRICA detectada.\n";
+                    estado_falha_eletrica = true;
+                }
             } else {
-                notificador.disparar_evento(TipoEvento::NORMALIZACAO);
-                std::cout << "[Monitor " << caminhao_id
-                          << "] Falha eletrica normalizada.\n";
+                if (estado_falha_eletrica) {
+                    notificador.disparar_evento(TipoEvento::NORMALIZACAO);
+                    std::cout << "[Monitor " << caminhao_id << "] Falha eletrica normalizada.\n";
+                    estado_falha_eletrica = false;
+                }
             }
         }
         // --------- Falha hidráulica ---------
@@ -119,13 +139,17 @@ void tarefa_monitoramento_falhas(int caminhao_id, NotificadorEventos& notificado
             bool falha = (payload == "1" || payload == "true");
 
             if (falha) {
-                notificador.disparar_evento(TipoEvento::FALHA_HIDRAULICA);
-                std::cout << "[Monitor " << caminhao_id
-                          << "] FALHA HIDRAULICA detectada\n";
+                if (!estado_falha_hidraulica) {
+                    notificador.disparar_evento(TipoEvento::FALHA_HIDRAULICA);
+                    std::cout << "[Monitor " << caminhao_id << "] FALHA HIDRAULICA detectada\n";
+                    estado_falha_hidraulica = true;
+                }
             } else {
-                notificador.disparar_evento(TipoEvento::NORMALIZACAO);
-                std::cout << "[Monitor " << caminhao_id
-                          << "] Falha hidraulica normalizada\n";
+                if (estado_falha_hidraulica) {
+                    notificador.disparar_evento(TipoEvento::NORMALIZACAO);
+                    std::cout << "[Monitor " << caminhao_id << "] Falha hidraulica normalizada\n";
+                    estado_falha_hidraulica = false;
+                }
             }
         }
     }

@@ -1,47 +1,65 @@
 #!/usr/bin/env bash
 set -e
 
-# Variáveis com defaults
 START_UI="${START_UI:-0}"
-START_SIMULATOR="${START_SIMULATOR:-1}"
+START_SIMULATOR="${START_SIMULATOR:-0}"
+START_CAMINHAO="${START_CAMINHAO:-0}"
 BROKER_HOST="${BROKER_HOST:-localhost}"
 
-echo "[start] Iniciando broker Mosquitto..."
-mosquitto -d
-sleep 0.8
+echo "[start] Config: SIM=$START_SIMULATOR, CAM=$START_CAMINHAO, HOST=$BROKER_HOST"
 
-# Checa binário C++
-BIN_CPP="/app/caminhao_cpp/build/caminhao_embarcado"
-if [ -x "$BIN_CPP" ]; then
-  echo "[start] Iniciando núcleo C++: $BIN_CPP"
-  "$BIN_CPP" &
-else
-  echo "[start][AVISO] Binário C++ não encontrado em $BIN_CPP"
-fi
-
-# (opcional) Inicia simulador Python para gerar sensores brutos via MQTT
+# --- INFRA: Broker + Simulador ---
 if [ "$START_SIMULATOR" = "1" ]; then
-  if [ -f "/app/interface_unificada/simulator_view.py" ]; then
-    echo "[start] Iniciando simulador Python (BROKER=$BROKER_HOST)..."
-    # O simulador conecta em localhost:1883 (dentro do container)
-    # e aceita 'spawn' dinâmico via tópico atr/sim/spawn
-    python3 /app/interface_unificada/simulator_view.py &
-  else
-    echo "[start][AVISO] simulator_view.py não encontrado."
-  fi
+    echo "[start] Iniciando Mosquitto..."
+    mosquitto -c /etc/mosquitto/mosquitto.conf -d
+    
+    # Espera o broker subir localmente antes de lançar o simulador
+    echo "[start] Aguardando broker local..."
+    while ! mosquitto_sub -h localhost -p 1883 -t '$SYS/#' -C 1 -W 1 >/dev/null 2>&1; do
+        sleep 0.5
+    done
+    echo "[start] Broker OK."
+
+    if [ -f "/app/interface_unificada/simulator_view.py" ]; then
+        echo "[start] Iniciando Simulador Python..."
+        python3 /app/interface_unificada/simulator_view.py &
+    fi
 fi
 
-# (opcional) Inicia UI unificada quando estiver pronta
-if [ "$START_UI" = "1" ]; then
-  if [ -f "/app/interface_unificada/main_ui.py" ]; then
-    echo "[start] Iniciando Interface Unificada Python..."
-    python3 /app/interface_unificada/main_ui.py
-  else
-    echo "[start][AVISO] main_ui.py não encontrado. Mantendo container ativo..."
-    tail -f /dev/null
-  fi
-else
-  echo "[start] Container ativo. Logs do broker no syslog. Pressione Ctrl+C para sair."
-  # Mantém o container vivo quando UI não é iniciada
-  tail -f /dev/null
+# --- CAMINHÃO: Espera Broker Remoto e Inicia ---
+if [ "$START_CAMINHAO" = "1" ]; then
+    echo "[start] Aguardando conexão com Broker em $BROKER_HOST..."
+    
+    # Loop infinito (ou quase) até conectar
+    # Usa mosquitto_sub para testar conexão TCP + MQTT real
+    RETRIES=30
+    while [ $RETRIES -gt 0 ]; do
+        if mosquitto_sub -h "$BROKER_HOST" -p 1883 -t '$SYS/#' -C 1 -W 2 >/dev/null 2>&1; then
+            echo "[start] Conexão com Broker estabelecida!"
+            break
+        fi
+        echo "[start] Broker indisponível... tentando novamente ($RETRIES restantes)"
+        sleep 2
+        RETRIES=$((RETRIES-1))
+    done
+
+    if [ $RETRIES -eq 0 ]; then
+        echo "[start] ERRO: Não foi possível conectar ao broker após 60s."
+        exit 1
+    fi
+
+    # Inicia Binário
+    BIN_CPP="/app/caminhao_cpp/build/caminhao_embarcado"
+    if [ -x "$BIN_CPP" ]; then
+        echo "[start] Iniciando núcleo C++ (ID=$CAMINHAO_ID)..."
+        "$BIN_CPP" &
+    else
+        echo "[start][ERRO] Binário não encontrado."
+    fi
 fi
+
+if [ "$START_UI" = "1" ]; then
+    python3 /app/interface_unificada/main_ui.py
+fi
+
+tail -f /dev/null

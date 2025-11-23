@@ -2,128 +2,186 @@ import paho.mqtt.client as mqtt
 import json
 import os
 import time
+import threading
+import sys
 
+# Configuração do Broker via Variável de Ambiente
 BROKER_HOST = os.environ.get("BROKER_HOST", "localhost")
 BROKER_PORT = 1883
 
-def criar_caminhao(client, truck_id, x, y, ang=0.0):
-    # 1) Cria caminhão
-    client.publish("atr/sim/spawn", json.dumps({"cmd": "spawn", "truck_id": truck_id}), qos=1)
-    print(f"Comando de criação enviado para caminhão {truck_id}")
-    time.sleep(0.2)  # Dá tempo do simulador instanciar
-    # 2) Seta posição inicial
-    client.publish(f"atr/{truck_id}/sim/cmd", json.dumps({
-        "cmd": "reset_position",
-        "x": float(x),
-        "y": float(y),
-        "ang": float(ang)
-    }), qos=1)
-    print(f"Comando de posição enviado para caminhão {truck_id} para (x={x}, y={y}, ang={ang})")
+# Estado global da frota (atualizado via MQTT)
+frota_status = {} # { "1": { "x": 10, "y": 20, "status": "ativo" }, ... }
+lock_frota = threading.Lock()
 
-def remover_caminhao(client, truck_id):
-    payload = {"cmd": "remove", "truck_id": truck_id}
+# IDs definidos no docker-compose
+CAMINHOES_DISPONIVEIS = [1, 2, 3, 4, 5]
+
+def on_connect(client, userdata, flags, rc):
+    if rc == 0:
+        print(f"[MQTT] Conectado ao broker {BROKER_HOST}!")
+        # Assina atualizações de sensores de TODOS os caminhões
+        client.subscribe("atr/+/sensor/raw")
+        # Assina respostas de lista do simulador
+        client.subscribe("atr/sim/list/response")
+    else:
+        print(f"[MQTT] Falha na conexão. Código: {rc}")
+
+def on_message(client, userdata, msg):
+    topic = msg.topic
+    payload = msg.payload.decode()
+
+    try:
+        data = json.loads(payload)
+        
+        # Atualização de sensor (heartbeat do caminhão)
+        if "sensor/raw" in topic:
+            truck_id = str(data.get("truck_id"))
+            with lock_frota:
+                if truck_id not in frota_status:
+                    frota_status[truck_id] = {}
+                
+                frota_status[truck_id].update({
+                    "x": data.get("i_posicao_x"),
+                    "y": data.get("i_posicao_y"),
+                    "ang": data.get("i_angulo_x"),
+                    "temp": data.get("i_temperatura"),
+                    "last_seen": time.time()
+                })
+
+        # Resposta da lista de ativos do simulador
+        elif topic == "atr/sim/list/response":
+            # data é uma lista de objetos
+            pass # Podemos usar isso para sincronizar status "real"
+
+    except Exception as e:
+        pass
+        # print(f"Erro ao processar msg: {e}")
+
+def clrscr():
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def exibir_menu():
+    clrscr()
+    print("==========================================")
+    print(f"   GESTÃO DA MINA (Broker: {BROKER_HOST})")
+    print("==========================================")
+    print("Caminhões no Docker: 1 a 5")
+    print("------------------------------------------")
+    print("STATUS DA FROTA (Últimos dados recebidos):")
+    
+    with lock_frota:
+        if not frota_status:
+            print(" [Nenhum caminhão ativo ou transmitindo]")
+        else:
+            print(f" {'ID':<4} | {'Pos (X,Y)':<12} | {'Ang':<6} | {'Temp':<6} | {'Status'}")
+            print("-" * 50)
+            for tid in sorted(frota_status.keys(), key=lambda x: int(x)):
+                info = frota_status[tid]
+                # Verifica se está 'vivo' (dados recentes < 5s)
+                is_alive = (time.time() - info.get("last_seen", 0)) < 5.0
+                status = "ONLINE" if is_alive else "OFFLINE"
+                
+                print(f" {tid:<4} | {info.get('x'):>4}, {info.get('y'):<5} | {info.get('ang'):>4} | {info.get('temp'):>4} | {status}")
+    
+    print("==========================================")
+    print("1. ATIVAR Caminhão (Spawn no Simulador)")
+    print("2. REMOVER Caminhão (Stop no Simulador)")
+    print("3. INJETAR Falha Elétrica")
+    print("4. LIMPAR Falhas")
+    print("5. Atualizar Lista (Refresh)")
+    print("0. Sair")
+    print("==========================================")
+
+def comando_spawn(client):
+    try:
+        tid = input("Digite o ID do caminhão para ATIVAR (1-5): ")
+        if int(tid) not in CAMINHOES_DISPONIVEIS:
+            print("ID inválido! Use IDs definidos no Docker Compose.")
+            input("Pressione Enter...")
+            return
+
+        # Manda spawn para o simulador
+        payload = {"cmd": "spawn", "truck_id": tid}
+        client.publish("atr/sim/spawn", json.dumps(payload), qos=1)
+        print(f"Comando enviado: ATIVAR Caminhão {tid}")
+        
+        # Manda reset de posição opcional
+        time.sleep(0.2)
+        x = input("Posição X inicial (padrão 0): ") or "0"
+        y = input("Posição Y inicial (padrão 0): ") or "0"
+        payload_pos = {"cmd": "reset_position", "x": float(x), "y": float(y), "ang": 0}
+        client.publish(f"atr/{tid}/sim/cmd", json.dumps(payload_pos), qos=1)
+        print(f"Posição definida para {tid}.")
+        
+    except ValueError:
+        print("Entrada inválida.")
+    
+    time.sleep(1)
+
+def comando_remove(client):
+    tid = input("Digite o ID do caminhão para REMOVER: ")
+    payload = {"cmd": "remove", "truck_id": tid}
     client.publish("atr/sim/remove", json.dumps(payload), qos=1)
-    print(f"Comando de remoção enviado para caminhão {truck_id}")
+    print(f"Comando enviado: REMOVER Caminhão {tid}")
     
-def listar_caminhoes_ativos(client, timeout=1.0):
-    lista_recebida = []
+    # Remove da lista local também para limpar a tela
+    with lock_frota:
+        if tid in frota_status:
+            del frota_status[tid]
+            
+    time.sleep(1)
 
-    def on_message(_client, _userdata, msg):
-        try:
-            dados = json.loads(msg.payload.decode())
-            lista_recebida.append(dados)
-        except Exception as e:
-            print(f"[CLI] Erro ao decodificar resposta: {e}")
+def comando_falha(client):
+    tid = input("Digite o ID do caminhão: ")
+    payload = {"cmd": "set_fault", "eletrica": True, "hidraulica": False}
+    client.publish(f"atr/{tid}/sim/cmd", json.dumps(payload), qos=1)
+    print(f"FALHA ELÉTRICA injetada no Caminhão {tid}!")
+    time.sleep(1)
 
-    # Subscreve temporariamente ao tópico de resposta
-    client.subscribe("atr/sim/list/response", qos=1)
-    client.on_message = on_message  # sobrescreve callback só para este momento
-
-    # Limpa fila MQTT antiga (importante em ambientes concorrentes)
-    client.loop_start()
-    # Envia comando para listar caminhões ativos
-    client.publish("atr/sim/list", "")
-
-    # Aguarda resposta (timeout)
-    esperou = 0
-    while not lista_recebida and esperou < timeout:
-        time.sleep(0.1)
-        esperou += 0.1
-
-    client.loop_stop()
-    client.unsubscribe("atr/sim/list/response")
-    client.on_message = None  # Remove handler após uso
-
-    if not lista_recebida:
-        print("\n[CLI] Nenhuma resposta recebida (simulador pode não estar ativo ou sem caminhões).\n")
-        return
-
-    # Exibe de forma amigável os caminhões ativos
-    lista = lista_recebida[0]
-    if not lista:
-        print("\n[CLI] Nenhum caminhão ativo.\n")
-        return
-    print("\n  Caminhões ativos:")
-    for cam in lista:
-        print(
-            f"    - ID={cam['id']:<4} Pos=({cam['x']:.1f}, {cam['y']:.1f}) "
-            f"Ang={cam['ang']:<5.1f}°  Temp={cam['temp']:.1f}°C "
-            f"V={cam['v']:.2f}  FalhaEle={cam['f_eletrica']}  FalhaHid={cam['f_hidraulica']}"
-        )
-    print("")
-    
-def injetar_falha_eletrica(client, truck_id):
-    payload = {"cmd": "set_fault", "eletrica": True}
-    topico = f"atr/{truck_id}/sim/cmd"
-    client.publish(topico, json.dumps(payload), qos=1)
-    print(f"[CLI] Falha elétrica injetada no caminhão {truck_id}")
-
-def injetar_falha_hidraulica(client, truck_id):
-    payload = {"cmd": "set_fault", "hidraulica": True}
-    topico = f"atr/{truck_id}/sim/cmd"
-    client.publish(topico, json.dumps(payload), qos=1)
-    print(f"[CLI] Falha hidráulica injetada no caminhão {truck_id}")
+def comando_limpar(client):
+    tid = input("Digite o ID do caminhão: ")
+    payload = {"cmd": "clear_faults"}
+    client.publish(f"atr/{tid}/sim/cmd", json.dumps(payload), qos=1)
+    print(f"Falhas limpas no Caminhão {tid}.")
+    time.sleep(1)
 
 def main():
-    client = mqtt.Client(client_id=f"cli_gestao_{int(time.time())}")
-    client.connect(BROKER_HOST, BROKER_PORT, 60)
-    client.loop_start()
-    print("\nInterface de criação/remover de caminhão\n")
+    client = mqtt.Client("cli_gestao_central")
+    client.on_connect = on_connect
+    client.on_message = on_message
+
+    try:
+        print(f"Conectando ao broker {BROKER_HOST}...")
+        client.connect(BROKER_HOST, BROKER_PORT, 60)
+        client.loop_start()
+    except Exception as e:
+        print(f"Erro crítico ao conectar no broker: {e}")
+        return
 
     while True:
-        try:
-            print("1 - Criar caminhão")
-            print("2 - Remover caminhão")
-            print("3 - Listar caminhões ativos")
-            print("4 - Injetar falha elétrica")
-            print("5 - Injetar falha hidráulica")
-            print("ENTER - Sair")
-            op = input("Escolha: ").strip()
-            if not op:
-                break
-            if op == "1":
-                truck_id = input("ID do caminhão: ").strip()
-                x = float(input("  Posição X: "))
-                y = float(input("  Posição Y: "))
-                ang = float(input("  Ângulo inicial (padrão 0): ") or "0")
-                criar_caminhao(client, truck_id, x, y, ang)
-            elif op == "2":
-                truck_id = input("ID do caminhão para remover: ").strip()
-                remover_caminhao(client, truck_id)
-            elif op == "3":
-                listar_caminhoes_ativos(client)
-            elif op == "4":
-                truck_id = input("ID do caminhão: ").strip()
-                injetar_falha_eletrica(client, truck_id)
+        exibir_menu()
+        opcao = input("Escolha uma opção: ")
 
-            elif op == "5":
-                truck_id = input("ID do caminhão: ").strip()
-                injetar_falha_hidraulica(client, truck_id)
+        if opcao == "1":
+            comando_spawn(client)
+        elif opcao == "2":
+            comando_remove(client)
+        elif opcao == "3":
+            comando_falha(client)
+        elif opcao == "4":
+            comando_limpar(client)
+        elif opcao == "5":
+            print("Atualizando...")
+            time.sleep(0.5)
+        elif opcao == "0":
+            print("Saindo...")
+            break
+        else:
+            print("Opção inválida!")
+            time.sleep(1)
 
-        except Exception as e:
-            print(f"Erro: {e}")
+    client.loop_stop()
     client.disconnect()
-    print("Encerrado.")
 
 if __name__ == "__main__":
     main()

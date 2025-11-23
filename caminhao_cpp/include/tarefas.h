@@ -4,6 +4,7 @@
 #include <mutex>
 #include "Buffer_Circular.h"
 #include "Notificador_Eventos.h"
+#include "config.h"
 
 namespace atr {
 

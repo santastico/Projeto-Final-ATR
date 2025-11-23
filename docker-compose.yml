@@ -1,18 +1,98 @@
 version: "3.8"
 
 services:
-  atr:
+  # --- INFRAESTRUTURA (Broker + Simulador) ---
+  infra_mina:
     build: .
-    container_name: atr_unificado
-    # Se quiser inspecionar o broker de fora:
+    container_name: infra_mina
     ports:
-      - "1883:1883"     # MQTT broker
-    # Monte o código no container (útil em desenvolvimento). Em produção, pode remover.
-    # volumes:
-    #   - ./:/app
+      - "1883:1883" # Expõe MQTT para host
     environment:
-      # Controla o que o start.sh vai iniciar (UI/simulador/ambos)
-      # START_UI: "1"       # quando a sua main_ui.py estiver pronta
-      START_SIMULATOR: "1"  # simulador Python ligado por padrão
-      BROKER_HOST: "localhost"
-    tty: true
+      - START_SIMULATOR=1
+      - START_CAMINHAO=0
+      - BROKER_HOST=localhost
+    networks:
+      - net_mina
+    # Healthcheck para verificar se a porta 1883 está aberta (Broker pronto)
+    # healthcheck:
+    #   test: ["CMD", "mosquitto_sub", "-h", "localhost", "-p", "1883", "-t", "$SYS/#", "-C", "1", "-W", "2"]
+    #   interval: 5s
+    #   timeout: 5s
+    #   retries: 10  # Aumentei retries para dar tempo ao start.sh
+    #   start_period: 5s # Dá 5s de folga inicial antes de começar a testar
+
+  # --- FROTA DE CAMINHÕES (Processos C++) ---
+  
+  # Caminhão 01
+  caminhao_01:
+    build: .
+    container_name: caminhao_01
+    depends_on:
+      - infra_mina
+    environment:
+      - CAMINHAO_ID=1
+      - START_SIMULATOR=0
+      - START_CAMINHAO=1
+      - BROKER_HOST=infra_mina
+    networks:
+      - net_mina
+
+  # Caminhão 02
+  caminhao_02:
+    build: .
+    container_name: caminhao_02
+    depends_on:
+      - infra_mina
+    environment:
+      - CAMINHAO_ID=2
+      - START_SIMULATOR=0
+      - START_CAMINHAO=1
+      - BROKER_HOST=infra_mina
+    networks:
+      - net_mina
+
+  # Caminhão 03
+  caminhao_03:
+    build: .
+    container_name: caminhao_03
+    depends_on:
+      - infra_mina
+    environment:
+      - CAMINHAO_ID=3
+      - START_SIMULATOR=0
+      - START_CAMINHAO=1
+      - BROKER_HOST=infra_mina
+    networks:
+      - net_mina
+
+  # Caminhão 04
+  caminhao_04:
+    build: .
+    container_name: caminhao_04
+    depends_on:
+      - infra_mina
+    environment:
+      - CAMINHAO_ID=4
+      - START_SIMULATOR=0
+      - START_CAMINHAO=1
+      - BROKER_HOST=infra_mina
+    networks:
+      - net_mina
+
+  # Caminhão 05
+  caminhao_05:
+    build: .
+    container_name: caminhao_05
+    depends_on:
+      - infra_mina
+    environment:
+      - CAMINHAO_ID=5
+      - START_SIMULATOR=0
+      - START_CAMINHAO=1
+      - BROKER_HOST=infra_mina
+    networks:
+      - net_mina
+
+networks:
+  net_mina:
+    driver: bridge

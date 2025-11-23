@@ -95,8 +95,40 @@ static void processar_mensagem(const std::string& texto_json)
 {
     if (!buffer_posicao_bruta || !buffer_posicao_tratada || !mtx_posicao_tratada_ptr) {
         std::cerr << "[tratamento_sensores] ERRO: tarefa nao configurada.\n";
+        std::cout << "Estou entrando no if buffer bruto | buffer tratado | mutex\n";
         return;
     }
+
+    // 1) Parse inicial para descobrir quem mandou a mensagem
+    json dados;
+    try {
+        dados = json::parse(texto_json, nullptr, false);
+        if (dados.is_discarded()) {
+            // JSON inválido, ignora silenciosamente
+            return;
+        }
+    } catch (...) {
+        return;
+    }
+
+    // 2) Extrai e Verifica ID
+    int truck_id_json = 0;
+    if (dados.contains("truck_id")) {
+        // Tenta ler como int ou string
+        if (dados["truck_id"].is_number_integer()) {
+            truck_id_json = dados["truck_id"].get<int>();
+        } else if (dados["truck_id"].is_string()) {
+            try {
+                truck_id_json = std::stoi(dados["truck_id"].get<std::string>());
+            } catch (...) { truck_id_json = 0; }
+        }
+    }
+
+    // --- FILTRO DE ID ---
+    if (truck_id_json != caminhao_id_global) {
+        return; // Mensagem não é para mim, ignora.
+    }
+
 
     // 1) Tenta gravar JSON BRUTO no buffer_posicao_bruta
     // Se falhar (cheio), ignoramos o retorno aqui pois vamos tratar no passo 2
@@ -182,7 +214,7 @@ void tarefa_tratamento_sensores_run(const std::string& broker_uri)
         return;
     }
 
-    std::string id_cliente = "tratamento_sensores_all";
+    std::string id_cliente = "tratamento_sensores_" + std::to_string(caminhao_id_global);
     const std::string topico = "atr/+/sensor/raw";   // único tópico, com wildcard
 
     mqtt::async_client cliente(broker_uri, id_cliente);
