@@ -268,12 +268,22 @@ class TruckSim:
             self.temp -= 0.005 * self.dt
         self.temp = max(-50.0, min(self.temp, 250.0))
 
-        # publica somente em mudança de célula (reduz tráfego)
+        # --- LÓGICA DE LOG ---
+        # Log a cada 3 ciclos * 2s = 6 segundos
+        LOG_CYCLE_INTERVAL = 3  
+        should_log_periodic = (self.seq % LOG_CYCLE_INTERVAL == 0)
         cell_now = (round_i(self.x), round_i(self.y))
         if cell_now != self._last_cell:
             self._last_cell = cell_now
             self._pub_log(
                 f"caminhão {self.id} deslocando ({cell_now[0]},{cell_now[1]}) , "
+                f"angulo: {round(self.ang,1)}°"
+            )
+        elif should_log_periodic:
+            # Log periódico de status
+            status = "parado" if abs(self.v) < 0.01 else "movendo"
+            self._pub_log(
+                f"caminhão {self.id} [{status}] em ({round(self.x, 2)}, {round(self.y, 2)}), "
                 f"angulo: {round(self.ang,1)}°"
             )
             
