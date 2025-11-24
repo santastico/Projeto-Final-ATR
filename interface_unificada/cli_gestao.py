@@ -4,6 +4,7 @@ import os
 import time
 import threading
 import sys
+import subprocess
 
 # Configuração do Broker via Variável de Ambiente
 BROKER_HOST = os.environ.get("BROKER_HOST", "localhost")
@@ -89,6 +90,7 @@ def exibir_menu():
     print("3. INJETAR Falha Elétrica")
     print("4. LIMPAR Falhas")
     print("5. Atualizar Lista (Refresh)")
+    print("6. Abrir mapa (Gestão da Mina - Pygame)")
     print("0. Sair")
     print("==========================================")
 
@@ -145,6 +147,24 @@ def comando_limpar(client):
     print(f"Falhas limpas no Caminhão {tid}.")
     time.sleep(1)
 
+def comando_abrir_mapa():
+    try:
+        print("[CLI] Abrindo gestao_mina.py (Pygame)...")
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        script_path = os.path.join(base_dir, "gestao_mina.py")
+
+        # Executa o mapa de forma BLOQUEANTE:
+        # o CLI fica parado e não lê teclado enquanto o mapa estiver aberto.
+        subprocess.run(["python3", script_path], check=False)
+
+        # Quando você fechar a janela do mapa, o código volta daqui
+        print("[CLI] Mapa fechado, retornando ao menu...")
+        time.sleep(1)
+    except Exception as e:
+        print(f"[CLI] Erro ao abrir mapa: {e}")
+        time.sleep(1)
+
+
 def main():
     client = mqtt.Client("cli_gestao_central")
     client.on_connect = on_connect
@@ -176,6 +196,8 @@ def main():
         elif opcao == "0":
             print("Saindo...")
             break
+        elif opcao == "6":
+           comando_abrir_mapa()
         else:
             print("Opção inválida!")
             time.sleep(1)

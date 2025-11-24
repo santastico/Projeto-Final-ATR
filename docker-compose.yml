@@ -1,29 +1,25 @@
 version: "3.8"
 
 services:
-  # --- INFRAESTRUTURA (Broker + Simulador) ---
+  # --- INFRAESTRUTURA (Broker + Simulador + GestÃ£o da Mina) ---
   infra_mina:
     build: .
     container_name: infra_mina
-    ports:
-      - "1883:1883" # Expõe MQTT para host
     environment:
       - START_SIMULATOR=1
-      - START_CAMINHAO=0
+      - START_CAMINHAO=1
+      - START_UI=0
       - BROKER_HOST=localhost
+      - DISPLAY=${DISPLAY}        # passa DISPLAY do host para o container
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw  # compartilha o socket do X
+    ports:
+      - "1883:1883"
     networks:
       - net_mina
-    # Healthcheck para verificar se a porta 1883 está aberta (Broker pronto)
-    # healthcheck:
-    #   test: ["CMD", "mosquitto_sub", "-h", "localhost", "-p", "1883", "-t", "$SYS/#", "-C", "1", "-W", "2"]
-    #   interval: 5s
-    #   timeout: 5s
-    #   retries: 10  # Aumentei retries para dar tempo ao start.sh
-    #   start_period: 5s # Dá 5s de folga inicial antes de começar a testar
 
-  # --- FROTA DE CAMINHÕES (Processos C++) ---
-  
-  # Caminhão 01
+  # --- FROTA DE CAMINHÃ•ES (Processos C++) ---
+
   caminhao_01:
     build: .
     container_name: caminhao_01
@@ -33,11 +29,11 @@ services:
       - CAMINHAO_ID=1
       - START_SIMULATOR=0
       - START_CAMINHAO=1
+      - START_UI=0
       - BROKER_HOST=infra_mina
     networks:
       - net_mina
 
-  # Caminhão 02
   caminhao_02:
     build: .
     container_name: caminhao_02
@@ -47,11 +43,11 @@ services:
       - CAMINHAO_ID=2
       - START_SIMULATOR=0
       - START_CAMINHAO=1
+      - START_UI=0
       - BROKER_HOST=infra_mina
     networks:
       - net_mina
 
-  # Caminhão 03
   caminhao_03:
     build: .
     container_name: caminhao_03
@@ -61,11 +57,11 @@ services:
       - CAMINHAO_ID=3
       - START_SIMULATOR=0
       - START_CAMINHAO=1
+      - START_UI=0
       - BROKER_HOST=infra_mina
     networks:
       - net_mina
 
-  # Caminhão 04
   caminhao_04:
     build: .
     container_name: caminhao_04
@@ -75,11 +71,11 @@ services:
       - CAMINHAO_ID=4
       - START_SIMULATOR=0
       - START_CAMINHAO=1
+      - START_UI=0
       - BROKER_HOST=infra_mina
     networks:
       - net_mina
 
-  # Caminhão 05
   caminhao_05:
     build: .
     container_name: caminhao_05
@@ -89,6 +85,7 @@ services:
       - CAMINHAO_ID=5
       - START_SIMULATOR=0
       - START_CAMINHAO=1
+      - START_UI=0
       - BROKER_HOST=infra_mina
     networks:
       - net_mina

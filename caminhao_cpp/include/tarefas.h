@@ -17,11 +17,22 @@ void tratamento_sensores(BufferCircular<std::string>* buffer_bruto,
 // função que roda na thread
 void tarefa_tratamento_sensores_run(const std::string& broker_uri);
 
+// Planejamento de Rota
+void planejamento_rota_config(
+    BufferCircular<std::string>* buffer_tratada,
+    std::mutex&     mtx_tratada,
+    BufferCircular<std::string>* buffer_setpoints,
+    std::mutex*     mtx_setpoints,
+    int             caminhao_id);
+
 // configuração
 void leitura_posicao_config(BufferCircular<std::string>* buffer_bruta,
                             BufferCircular<std::string>* buffer_tratada,
                             std::mutex& mtx);
 
+
+// thread do controle de navegação
+void tarefa_controle_navegacao_run();
 // thread
 void tarefa_leitura_posicao_run();
 
@@ -33,8 +44,8 @@ void controle_navegacao_config(BufferCircular<std::string>* buffer_tratada,
                                std::mutex& mtx,
                                NotificadorEventos& notificador);
 
-// thread do controle de navegação
-void tarefa_controle_navegacao_run();
+// thread do planejamento de rota
+void tarefa_planejamento_rota_run(const std::string& broker_uri);
 
 
 } // namespace atr

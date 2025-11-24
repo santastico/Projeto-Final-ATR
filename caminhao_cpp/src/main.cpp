@@ -41,7 +41,9 @@ int main() {
     std::mutex mtx_posicao_tratada;
     BufferCircular<std::string> buffer_posicao_bruta(10);
     BufferCircular<std::string> buffer_posicao_tratada(100);
+    BufferCircular<std::string> buffer_setpoints_nav(100);
     atr::NotificadorEventos notificador;
+    std::mutex mtx_setpoints_nav;
 
     // -----------------------------------------------------------------
     // 3. Configuração das Tarefas
@@ -55,6 +57,15 @@ int main() {
         caminhao_id
     );
 
+    // Planejamento de Rota (novo)
+    atr::planejamento_rota_config(
+        &buffer_posicao_tratada,   // entrada: posição tratada
+        mtx_posicao_tratada,
+        &buffer_setpoints_nav,     // saída: setpoints para o controle
+        &mtx_setpoints_nav,
+        caminhao_id
+    );
+
     // Coletor de Dados
     atr::leitura_posicao_config(
         nullptr,
@@ -64,8 +75,8 @@ int main() {
 
     // Controle de Navegação (NOVO)
     atr::controle_navegacao_config(
-        &buffer_posicao_tratada,
-        mtx_posicao_tratada,
+        &buffer_setpoints_nav,
+        mtx_setpoints_nav,
         notificador
     );
 
@@ -86,6 +97,11 @@ int main() {
         std::ref(notificador)
     );
 
+    std::thread t_plan(
+        atr::tarefa_planejamento_rota_run,
+        obter_broker_uri()
+    );
+
     // Thread 3: Coletor de Dados
     std::thread t_coletor(atr::tarefa_leitura_posicao_run);
 
@@ -102,6 +118,7 @@ int main() {
     if (t_monitor.joinable()) t_monitor.join();
     if (t_coletor.joinable()) t_coletor.join();
     if (t_ctrl_nav.joinable()) t_ctrl_nav.join();
+    if (t_plan.joinable()) t_plan.join();
 
     std::cout << "[Main " << caminhao_id << "] Processo encerrado.\n";
     return 0;
