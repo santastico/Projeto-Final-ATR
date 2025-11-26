@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
 set -e
+export XDG_RUNTIME_DIR=/tmp/runtime
+mkdir -p /tmp/runtime
 
 START_UI="${START_UI:-0}"
 START_SIMULATOR="${START_SIMULATOR:-0}"
