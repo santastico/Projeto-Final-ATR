@@ -23,6 +23,9 @@ namespace atr {
 static BufferCircular<std::string>* buffer_posicao_bruta   = nullptr;
 static BufferCircular<std::string>* buffer_posicao_tratada = nullptr;
 
+// ponteiro para a variável de condição criada no main
+static std::condition_variable* cv_buffer_tratada_ptr = nullptr;
+
 // ponteiro para o mutex criado no main
 static std::mutex* mtx_posicao_tratada_ptr = nullptr;
 
@@ -45,12 +48,14 @@ static std::deque<int> janela_temp;
 void tratamento_sensores(BufferCircular<std::string>* buffer_posicao_bruta_param,
                          BufferCircular<std::string>* buffer_posicao_tratada_param,
                          std::mutex&     mtx_posicao_tratada,
+                         std::condition_variable& cv_buffer_tratada,
                          int             caminhao_id)
 {
     // guarda os ponteiros / valores em variáveis globais
     buffer_posicao_bruta    = buffer_posicao_bruta_param;
     buffer_posicao_tratada  = buffer_posicao_tratada_param;
     mtx_posicao_tratada_ptr = &mtx_posicao_tratada;
+    cv_buffer_tratada_ptr   = &cv_buffer_tratada; // NOVO
     caminhao_id_global      = caminhao_id;
 
     std::cout << "[tratamento_sensores] Configurado para caminhao_id = "
@@ -192,6 +197,9 @@ static void processar_mensagem(const std::string& texto_json)
                 if (!buffer_posicao_tratada->escrever(texto_filtrado)) {
                     std::cerr << "[tratamento_sensores] buffer_posicao_tratada CHEIO ao gravar lote.\n";
                 }
+            }
+            if (cv_buffer_tratada_ptr) {
+                cv_buffer_tratada_ptr->notify_all();
             }
 
             std::cout << "[LOTE PROCESSADO] Média de " << count << " amostras gravada no Buffer Tratado.\n";
