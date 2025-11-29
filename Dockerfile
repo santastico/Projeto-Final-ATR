@@ -62,6 +62,7 @@ RUN pip install --no-cache-dir -r /app/interface_unificada/requirements.txt pyga
 # ------------------------------
 COPY ./start.sh /app/start.sh
 RUN chmod +x /app/start.sh
+RUN mkdir -p /tmp/runtime && chmod 700 /tmp/runtime
 
 EXPOSE 1883
 ENTRYPOINT ["/app/start.sh"]

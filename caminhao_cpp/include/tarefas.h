@@ -2,22 +2,29 @@
 
 #include <string>
 #include <mutex>
+#include <condition_variable>
 #include "Buffer_Circular.h"
 #include "Notificador_Eventos.h"
 #include "config.h"
 
 namespace atr {
 
-// configura ponteiros globais
+// =====================================================================
+// TRATAMENTO DE SENSORES
+// =====================================================================
+
 void tratamento_sensores(BufferCircular<std::string>* buffer_bruto,
                          BufferCircular<std::string>* buffer_tratado,
                          std::mutex& mtx_posicao_tratada,
+                         std::condition_variable& cv_buffer_tratada,
                          int caminhao_id);
 
-// função que roda na thread
 void tarefa_tratamento_sensores_run(const std::string& broker_uri);
 
-// Planejamento de Rota
+// =====================================================================
+// PLANEJAMENTO DE ROTA
+// =====================================================================
+
 void planejamento_rota_config(
     BufferCircular<std::string>* buffer_tratada,
     std::mutex&     mtx_tratada,
@@ -25,27 +32,35 @@ void planejamento_rota_config(
     std::mutex*     mtx_setpoints,
     int             caminhao_id);
 
-// configuração
-void leitura_posicao_config(BufferCircular<std::string>* buffer_bruta,
-                            BufferCircular<std::string>* buffer_tratada,
-                            std::mutex& mtx);
+void tarefa_planejamento_rota_run(const std::string& broker_uri);
 
+// =====================================================================
+// COLETOR DE DADOS (NOVO)
+// =====================================================================
 
-// thread do controle de navegação
-void tarefa_controle_navegacao_run();
-// thread
-void tarefa_leitura_posicao_run();
+void coletor_dados_config(
+    BufferCircular<std::string>* buffer_tratada,
+    std::mutex& mtx_tratada,
+    std::condition_variable& cv_tratada,
+    int caminhao_id);
 
-void tarefa_monitoramento_falhas(int caminhao_id,
-                                 NotificadorEventos& notificador);
+void tarefa_coletor_dados_run();
 
-// configuração da tarefa de controle de navegação
+// =====================================================================
+// CONTROLE DE NAVEGAÇÃO
+// =====================================================================
+
 void controle_navegacao_config(BufferCircular<std::string>* buffer_tratada,
                                std::mutex& mtx,
                                NotificadorEventos& notificador);
 
-// thread do planejamento de rota
-void tarefa_planejamento_rota_run(const std::string& broker_uri);
+void tarefa_controle_navegacao_run();
 
+// =====================================================================
+// MONITORAMENTO DE FALHAS
+// =====================================================================
+
+void tarefa_monitoramento_falhas(int caminhao_id,
+                                 NotificadorEventos& notificador);
 
 } // namespace atr

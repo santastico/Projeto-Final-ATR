@@ -7,10 +7,11 @@ services:
     container_name: infra_mina
     environment:
       - START_SIMULATOR=1
-      - START_CAMINHAO=1
+      - START_CAMINHAO=0
       - START_UI=0
       - BROKER_HOST=localhost
       - DISPLAY=${DISPLAY}        # passa DISPLAY do host para o container
+      - XDG_RUNTIME_DIR=/tmp/runtime # <-- ADICIONEI ESTA LINHA
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw  # compartilha o socket do X
     ports:

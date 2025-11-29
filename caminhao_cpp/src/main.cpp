@@ -4,16 +4,17 @@
  */
 
 #include <iostream>
-#include <cstdlib> // para std::getenv
+#include <cstdlib>
 #include <thread>
 #include <string>
 #include <mutex>
+#include <condition_variable>
 #include <functional>
 
 #include "Buffer_Circular.h"
 #include "Notificador_Eventos.h"
-#include "tarefas.h"  // declarações das tarefas no namespace atr
-#include "config.h"   // para obter_broker_uri()
+#include "tarefas.h"
+#include "config.h"
 
 int main() {
     // -----------------------------------------------------------------
@@ -39,9 +40,12 @@ int main() {
     // -----------------------------------------------------------------
 
     std::mutex mtx_posicao_tratada;
+    std::condition_variable cv_buffer_tratada; // NOVO: notifica leitores
+    
     BufferCircular<std::string> buffer_posicao_bruta(10);
     BufferCircular<std::string> buffer_posicao_tratada(100);
     BufferCircular<std::string> buffer_setpoints_nav(100);
+    
     atr::NotificadorEventos notificador;
     std::mutex mtx_setpoints_nav;
 
@@ -53,27 +57,29 @@ int main() {
     atr::tratamento_sensores(
         &buffer_posicao_bruta, 
         &buffer_posicao_tratada, 
-        mtx_posicao_tratada, 
+        mtx_posicao_tratada,
+        cv_buffer_tratada, 
         caminhao_id
     );
 
-    // Planejamento de Rota (novo)
+    // Planejamento de Rota
     atr::planejamento_rota_config(
-        &buffer_posicao_tratada,   // entrada: posição tratada
+        &buffer_posicao_tratada,
         mtx_posicao_tratada,
-        &buffer_setpoints_nav,     // saída: setpoints para o controle
+        &buffer_setpoints_nav,
         &mtx_setpoints_nav,
         caminhao_id
     );
 
-    // Coletor de Dados
-    atr::leitura_posicao_config(
-        nullptr,
+    // Coletor de Dados (NOVO)
+    atr::coletor_dados_config(
         &buffer_posicao_tratada,
-        mtx_posicao_tratada
+        mtx_posicao_tratada,
+        cv_buffer_tratada,
+        caminhao_id
     );
 
-    // Controle de Navegação (NOVO)
+    // Controle de Navegação
     atr::controle_navegacao_config(
         &buffer_setpoints_nav,
         mtx_setpoints_nav,
@@ -84,13 +90,11 @@ int main() {
     // 4. Lançamento das Threads
     // -----------------------------------------------------------------
 
-    // Thread 1: Tratamento de Sensores
     std::thread t_sens(
         atr::tarefa_tratamento_sensores_run,
         obter_broker_uri()
     );
 
-    // Thread 2: Monitoramento de Falhas
     std::thread t_monitor(
         atr::tarefa_monitoramento_falhas,
         caminhao_id,
@@ -102,10 +106,8 @@ int main() {
         obter_broker_uri()
     );
 
-    // Thread 3: Coletor de Dados
-    std::thread t_coletor(atr::tarefa_leitura_posicao_run);
+    std::thread t_coletor(atr::tarefa_coletor_dados_run); // NOVO
 
-    // Thread 4: Controle de Navegação (NOVO)
     std::thread t_ctrl_nav(atr::tarefa_controle_navegacao_run);
 
     std::cout << "[Main " << caminhao_id << "] Todas as threads iniciadas.\n";
@@ -116,9 +118,9 @@ int main() {
     
     if (t_sens.joinable()) t_sens.join();
     if (t_monitor.joinable()) t_monitor.join();
+    if (t_plan.joinable()) t_plan.join();
     if (t_coletor.joinable()) t_coletor.join();
     if (t_ctrl_nav.joinable()) t_ctrl_nav.join();
-    if (t_plan.joinable()) t_plan.join();
 
     std::cout << "[Main " << caminhao_id << "] Processo encerrado.\n";
     return 0;
