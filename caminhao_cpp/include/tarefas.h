@@ -50,11 +50,30 @@ void tarefa_coletor_dados_run();
 // CONTROLE DE NAVEGAÇÃO
 // =====================================================================
 
-void controle_navegacao_config(BufferCircular<std::string>* buffer_tratada,
-                               std::mutex& mtx,
-                               NotificadorEventos& notificador);
+void controle_navegacao_config(
+    BufferCircular<std::string>* buffer_tratada,
+    std::mutex& mtx_tratada,
+    BufferCircular<std::string>* buffer_sp_rota,
+    std::mutex& mtx_sp_rota,
+    BufferCircular<std::string>* buffer_sp_ctrl,
+    std::mutex& mtx_sp_ctrl,
+    NotificadorEventos& notificador);
 
 void tarefa_controle_navegacao_run();
+
+// =====================================================================
+// LÓGICA DE COMANDO
+// =====================================================================
+
+void logica_comando_config(
+    BufferCircular<std::string>* buffer_setpoints,  
+    std::mutex& mtx_setpoints,
+    BufferCircular<std::string>* buffer_estado,  
+    std::mutex& mtx_estado,
+    NotificadorEventos& notificador,
+    int caminhao_id);
+
+void tarefa_logica_comando_run(const std::string& broker_uri);
 
 // =====================================================================
 // MONITORAMENTO DE FALHAS

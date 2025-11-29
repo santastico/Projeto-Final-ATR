@@ -44,7 +44,17 @@ int main() {
     
     BufferCircular<std::string> buffer_posicao_bruta(10);
     BufferCircular<std::string> buffer_posicao_tratada(100);
-    BufferCircular<std::string> buffer_setpoints_nav(100);
+    // Navegação (planejamento -> controle)
+    BufferCircular<std::string> buffer_setpoints_rota(50);
+    std::mutex mtx_setpoints_rota;
+
+    // Saída do controle (controle -> lógica de comando)
+    BufferCircular<std::string> buffer_setpoints_ctrl(50);
+    std::mutex mtx_setpoints_ctrl;
+
+    // Estado para interface local (lógica -> UI futura)
+    BufferCircular<std::string> buffer_estado_logica(50);
+    std::mutex mtx_estado_logica;
     
     atr::NotificadorEventos notificador;
     std::mutex mtx_setpoints_nav;
@@ -66,8 +76,8 @@ int main() {
     atr::planejamento_rota_config(
         &buffer_posicao_tratada,
         mtx_posicao_tratada,
-        &buffer_setpoints_nav,
-        &mtx_setpoints_nav,
+        &buffer_setpoints_rota,
+        &mtx_setpoints_rota,
         caminhao_id
     );
 
@@ -81,9 +91,23 @@ int main() {
 
     // Controle de Navegação
     atr::controle_navegacao_config(
-        &buffer_setpoints_nav,
-        mtx_setpoints_nav,
+        &buffer_posicao_tratada,   // lê posição tratada
+        mtx_posicao_tratada,
+        &buffer_setpoints_rota,    // lê SP da rota
+        mtx_setpoints_rota,
+        &buffer_setpoints_ctrl,    // escreve saída para lógica
+        mtx_setpoints_ctrl,
         notificador
+    );
+
+    // Lógica de Comando
+    atr::logica_comando_config(
+        &buffer_setpoints_ctrl,    // lê saída do controle
+        mtx_setpoints_ctrl,
+        &buffer_estado_logica,     // escreve estado para UI local
+        mtx_estado_logica,
+        notificador,
+        caminhao_id
     );
 
     // -----------------------------------------------------------------
@@ -110,6 +134,11 @@ int main() {
 
     std::thread t_ctrl_nav(atr::tarefa_controle_navegacao_run);
 
+    std::thread t_logica(
+        atr::tarefa_logica_comando_run,
+        obter_broker_uri()
+    );
+
     std::cout << "[Main " << caminhao_id << "] Todas as threads iniciadas.\n";
 
     // -----------------------------------------------------------------
@@ -121,6 +150,7 @@ int main() {
     if (t_plan.joinable()) t_plan.join();
     if (t_coletor.joinable()) t_coletor.join();
     if (t_ctrl_nav.joinable()) t_ctrl_nav.join();
+    if (t_logica.joinable())   t_logica.join();
 
     std::cout << "[Main " << caminhao_id << "] Processo encerrado.\n";
     return 0;
