@@ -90,6 +90,10 @@ static void thread_eventos_controle()
         switch (ev) {
         case TipoEvento::DEFEITO_TERMICO:
         case TipoEvento::FALHA_ELETRICA:
+            g_em_defeito.store(true);
+            std::cout << "[controle_nav " << g_caminhao_id
+                      << "] *** FALHA ELETRICA recebida ***\n";
+            break;
         case TipoEvento::FALHA_HIDRAULICA:
         case TipoEvento::FALHA_SENSOR_TIMEOUT:
             g_em_defeito.store(true);
@@ -134,7 +138,21 @@ void tarefa_controle_navegacao_run()
     while (true) {
         // 0) Em defeito, não gera novos comandos (mantém último).
         if (g_em_defeito.load()) {
-            // Pequeno sleep aqui é aceitável: estamos em estado de falha.
+            // Comando de freio forte enquanto durar a falha
+            double cmd_acel = -100.0;         // máxima frenagem
+            double cmd_soma_ang = g_sp_ang_atual; // mantém direção atual
+
+            json j_out;
+            j_out["truck_id"]              = g_caminhao_id;
+            j_out["setpoint_aceleracao"]   = cmd_acel;
+            j_out["setpoint_soma_angular"] = cmd_soma_ang;
+
+            const std::string saida = j_out.dump();
+            {
+                std::lock_guard<std::mutex> lock(*g_mtx_ctrl_saida);
+                g_buffer_ctrl_saida->escrever(saida); // se encher, tudo bem, é emergência
+            }
+
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             continue;
         }

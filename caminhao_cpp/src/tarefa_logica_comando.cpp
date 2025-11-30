@@ -187,7 +187,7 @@ void tarefa_logica_comando_run(const std::string& broker_uri)
         // 2) Aplica lógica de falha: se em defeito, zera comandos
         // -------------------------------------------------------------
         if (g_em_defeito.load()) {
-            cmd_acel = 0.0;
+            // cmd_acel = 0.0;
             cmd_dir  = 0.0;
         }
 
