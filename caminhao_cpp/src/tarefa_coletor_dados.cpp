@@ -101,7 +101,9 @@ void tarefa_coletor_dados_run()
         // FIM SEÇÃO CRÍTICA
         // ============================
 
-        std::cout << "[coletor_dados] " << contador << " registros coletados.\n";
+        if (contador > 0) {
+            std::cout << "[coletor_dados] " << contador << " registros coletados.\n";
+        }
     }
 
     log.close();

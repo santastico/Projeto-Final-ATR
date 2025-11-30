@@ -11,6 +11,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <algorithm> 
 
 namespace atr {
 
@@ -22,6 +23,7 @@ using json = nlohmann::json;
 
 static BufferCircular<std::string>* g_buffer_pos_tratada = nullptr;
 static std::mutex*                  g_mtx_pos_tratada    = nullptr;
+static std::condition_variable* g_cv_setpoints_rota = nullptr;
 
 static BufferCircular<std::string>* g_buffer_setpoints   = nullptr;
 static std::mutex*                  g_mtx_setpoints      = nullptr;
@@ -42,6 +44,7 @@ void planejamento_rota_config(
     std::mutex&     mtx_tratada,
     BufferCircular<std::string>* buffer_setpoints,
     std::mutex*     mtx_setpoints,
+    std::condition_variable*     cv_setpoints_rota,  // NOVO
     int             caminhao_id)
 {
     g_buffer_pos_tratada = buffer_tratada;
@@ -50,6 +53,7 @@ void planejamento_rota_config(
     g_buffer_setpoints   = buffer_setpoints;
     g_mtx_setpoints      = mtx_setpoints;
 
+    g_cv_setpoints_rota  = cv_setpoints_rota;
     g_caminhao_id        = caminhao_id;
 
     std::cout << "[planejamento_rota] Configurado para caminhao_id = "
@@ -70,8 +74,12 @@ static void processar_setpoint_final(const std::string& payload)
             double x = j["x"].get<double>();
             double y = j["y"].get<double>();
 
-            g_dest_x.store(x);
-            g_dest_y.store(y);
+            // Limita destino ao mapa [0,100] e arredonda para inteiro
+            x = std::clamp(x, 0.0, 100.0);
+            y = std::clamp(y, 0.0, 100.0);
+
+            g_dest_x.store(std::round(x));
+            g_dest_y.store(std::round(y));
             g_tem_destino.store(true);
 
             std::cout << "[planejamento_rota] Novo destino para caminhao "
@@ -141,15 +149,22 @@ void tarefa_planejamento_rota_run(const std::string& broker_uri)
                         continue;
                     }
 
+                    // 1) Lê posição tratada em double
                     const double x   = j.value("f_posicao_x", 0.0);
                     const double y   = j.value("f_posicao_y", 0.0);
                     const double ang = j.value("f_angulo_x", 0.0);
 
-                    std::cout << "[planejamento_rota] posicao_tratada: "
-                        << "x=" << x
-                        << " y=" << y
-                        << " ang=" << ang << std::endl;
+                    // 2) Converte para inteiros (células)
+                    int xi = static_cast<int>(std::round(x));
+                    int yi = static_cast<int>(std::round(y));
 
+                    int dest_xi = static_cast<int>(g_dest_x.load());
+                    int dest_yi = static_cast<int>(g_dest_y.load());
+
+                    std::cout << "[planejamento_rota] posicao_tratada: "
+                            << "x=" << x
+                            << " y=" << y
+                            << " ang=" << ang << std::endl;
 
                     // 2.a) Publica posição atual para a Gestão da Mina
                     json pub_pos;
@@ -167,47 +182,53 @@ void tarefa_planejamento_rota_run(const std::string& broker_uri)
                     double sp_ang = ang;
 
                     if (g_tem_destino.load()) {
-                        const double dx   = g_dest_x.load() - x;
-                        const double dy   = g_dest_y.load() - y;
-                        const double dist = std::sqrt(dx * dx + dy * dy);
+                        int dx_cells   = dest_xi - xi;
+                        int dy_cells   = dest_yi - yi;
+                        int dist_cells = std::abs(dx_cells) + std::abs(dy_cells);
 
-                        if (dist > 1.0) {
-                            // Velocidade desejada (constante simples)
-                            sp_vel = 10.0;
+                        if (dist_cells <= 3 ) {
+                            sp_vel = 0.0;
+                            g_tem_destino.store(false);
+                        } else {
+                            sp_vel = 1.0; // anda enquanto não chegou
 
-                            double ang_desejado = std::atan2(dy, dx) * 180.0 / M_PI;
+                            double ang_desejado = std::atan2(
+                                static_cast<double>(dy_cells),
+                                static_cast<double>(dx_cells)
+                            ) * 180.0 / M_PI;
+
                             double erro = ang_desejado - ang;
-
-                            // Normaliza erro para [-180, 180]
                             while (erro > 180.0)  erro -= 360.0;
                             while (erro < -180.0) erro += 360.0;
 
                             sp_ang = ang + erro;
                         }
-                        else {
-                            // Chegou próximo do destino
-                            sp_vel = 0.0;
-                            g_tem_destino.store(false);
-                        }
                     }
 
                     if (g_buffer_setpoints && g_mtx_setpoints) {
                         json j_sp;
-                        j_sp["truck_id"]             = g_caminhao_id;
-                        j_sp["setpoint_velocidade"]  = sp_vel;
+                        j_sp["truck_id"]                 = g_caminhao_id;
+                        j_sp["setpoint_velocidade"]      = sp_vel;
                         j_sp["setpoint_posicao_angular"] = sp_ang;
 
                         std::lock_guard<std::mutex> lock2(*g_mtx_setpoints);
                         if (!g_buffer_setpoints->escrever(j_sp.dump())) {
                             std::cerr << "[planejamento_rota] buffer_setpoints CHEIO.\n";
+                        } else {
+                            // NOVO: acorda o Controle de Navegação
+                            if (g_cv_setpoints_rota) {
+                                g_cv_setpoints_rota->notify_one();
+                            }
                         }
                     }
+
                 }
                 catch (const std::exception& e) {
                     std::cerr << "[planejamento_rota] Erro ao processar dado tratado: "
-                              << e.what() << "\n";
+                            << e.what() << "\n";
                 }
             }
+
 
             std::this_thread::sleep_for(PERIODO_PLANEJ);
         }

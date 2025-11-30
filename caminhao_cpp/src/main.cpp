@@ -47,6 +47,8 @@ int main() {
     // Navegação (planejamento -> controle)
     BufferCircular<std::string> buffer_setpoints_rota(50);
     std::mutex mtx_setpoints_rota;
+    std::condition_variable cv_setpoints_rota;   // NOVO: acorda controle_nav
+
 
     // Saída do controle (controle -> lógica de comando)
     BufferCircular<std::string> buffer_setpoints_ctrl(50);
@@ -78,6 +80,7 @@ int main() {
         mtx_posicao_tratada,
         &buffer_setpoints_rota,
         &mtx_setpoints_rota,
+        &cv_setpoints_rota,
         caminhao_id
     );
 
@@ -91,13 +94,13 @@ int main() {
 
     // Controle de Navegação
     atr::controle_navegacao_config(
-        &buffer_posicao_tratada,   // lê posição tratada
-        mtx_posicao_tratada,
         &buffer_setpoints_rota,    // lê SP da rota
         mtx_setpoints_rota,
+        cv_setpoints_rota,         // acorda quando há SP novo
         &buffer_setpoints_ctrl,    // escreve saída para lógica
         mtx_setpoints_ctrl,
-        notificador
+        notificador,
+        caminhao_id
     );
 
     // Lógica de Comando
