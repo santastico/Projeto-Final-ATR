@@ -83,7 +83,7 @@ void tarefa_coletor_dados_run()
         std::string dado;
         int contador = 0;
         
-        // while (g_buffer_posicao_tratada->retirar(dado)) {
+        // while (g_buffer_posicao_tratada->ler(dado)) {
         //     // Timestamp
         //     auto now = std::chrono::system_clock::now();
         //     auto timestamp = std::chrono::system_clock::to_time_t(now);

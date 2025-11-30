@@ -27,7 +27,7 @@ import paho.mqtt.client as mqtt
 # Parâmetros globais
 # ==========================
 
-DT_DEFAULT      = 0.5         # 20 Hz
+DT_DEFAULT      = 0.1         # 20 Hz
 V_MAX           = 2.0         # velocidade máxima (unidades/s)
 A_MAX           = 2.0         # aceleração máxima (unidades/s²)
 FRIC            = 0.99        # atrito simples sobre a velocidade

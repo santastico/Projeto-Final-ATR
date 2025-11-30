@@ -185,10 +185,12 @@ void tarefa_planejamento_rota_run(const std::string& broker_uri)
                         int dx_cells   = dest_xi - xi;
                         int dy_cells   = dest_yi - yi;
                         int dist_cells = std::abs(dx_cells) + std::abs(dy_cells);
+                        const int RAIO_CHEGADA_CELULAS = 5; // ou 2 se ainda oscilar muito
 
-                        if (dist_cells <= 3 ) {
+                        if (dist_cells <= RAIO_CHEGADA_CELULAS ) {
                             sp_vel = 0.0;
                             g_tem_destino.store(false);
+                            sp_ang = ang;
                         } else {
                             sp_vel = 1.0; // anda enquanto não chegou
 

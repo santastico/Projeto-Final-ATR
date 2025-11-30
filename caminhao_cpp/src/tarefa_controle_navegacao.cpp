@@ -172,7 +172,12 @@ void tarefa_controle_navegacao_run()
         //    - Se sp_vel > 0 => aceleração constante
         //    - sp_ang é usado diretamente como soma angular
 
-        double cmd_acel = (g_sp_vel_atual > 0.5) ? 30.0 : 0.0; // 30% quando deve andar
+        double cmd_acel;
+        if (g_sp_vel_atual > 0.5) {
+            cmd_acel = 30.0;    // acelera para andar
+        } else {
+            cmd_acel = -30.0;   // freio ativo quando queremos parar
+        }
         double cmd_soma_ang = g_sp_ang_atual;
 
         cmd_acel     = std::clamp(cmd_acel, -100.0, 100.0);
