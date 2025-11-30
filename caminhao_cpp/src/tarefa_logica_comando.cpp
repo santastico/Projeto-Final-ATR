@@ -173,7 +173,7 @@ void tarefa_logica_comando_run(const std::string& broker_uri)
 
                     double soma_ang = j.value("setpoint_soma_angular", 0.0);
                     // O simulador espera direcao em graus [-180, 180]
-                    cmd_dir = std::clamp(soma_ang, -180.0, 180.0);
+                    cmd_dir = soma_ang;
                 }
                 // Se for uma mensagem do Planejamento de Rota (só setpoint_vel/ang),
                 // ignoramos aqui.

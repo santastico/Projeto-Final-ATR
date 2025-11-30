@@ -199,11 +199,7 @@ void tarefa_planejamento_rota_run(const std::string& broker_uri)
                                 static_cast<double>(dx_cells)
                             ) * 180.0 / M_PI;
 
-                            double erro = ang_desejado - ang;
-                            while (erro > 180.0)  erro -= 360.0;
-                            while (erro < -180.0) erro += 360.0;
-
-                            sp_ang = ang + erro;
+                            sp_ang = ang_desejado;
                         }
                     }
 
