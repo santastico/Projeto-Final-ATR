@@ -27,7 +27,7 @@ import paho.mqtt.client as mqtt
 # Parâmetros globais
 # ==========================
 
-DT_DEFAULT      = 2.0  # 20 Hz
+DT_DEFAULT      = 0.5         # 20 Hz
 V_MAX           = 2.0         # velocidade máxima (unidades/s)
 A_MAX           = 2.0         # aceleração máxima (unidades/s²)
 FRIC            = 0.99        # atrito simples sobre a velocidade
@@ -80,6 +80,11 @@ class TruckSim:
         self.topic_log    = f"atr/{self.id}/sim/log"
         self.topic_sensor = f"atr/{self.id}/sensor/raw"
 
+        # tópicos de atuadores usados pela logica_comando C++ (documentação):
+        # atr/<id>/o_aceleracao e atr/<id>/o_direcao, payload numérico (int/float)
+        self.topic_o_acel = f"atr/{self.id}/o_aceleracao"
+        self.topic_o_dir  = f"atr/{self.id}/o_direcao"
+
         # tópicos individuais de temperatura e falhas (para Monitoramento de Falhas)
         self.topic_temp   = f"atr/{self.id}/sensor/i_temperatura"
         self.topic_fele   = f"atr/{self.id}/sensor/i_falha_eletrica"
@@ -93,6 +98,12 @@ class TruckSim:
         self.client.message_callback_add(self.topic_act, self._on_act)
         self.client.subscribe(self.topic_act, qos=1)
 
+
+        # assina também os tópicos diretos esperados pela documentação da logica_comando
+        self.client.message_callback_add(self.topic_o_acel, self._on_act_legacy)
+        self.client.message_callback_add(self.topic_o_dir,  self._on_act_legacy)
+        self.client.subscribe(self.topic_o_acel, qos=1)
+        self.client.subscribe(self.topic_o_dir,  qos=1)
         # log inicial
         self._pub_log(f"caminhão {self.id}: criado")
 
@@ -225,6 +236,26 @@ class TruckSim:
                     self.o_direcao = float(data["o_direcao"])
         except Exception as e:
             print(f"[SIM ACT {self.id}] erro:", e)
+    def _on_act_legacy(self, _c, _u, msg):
+        """
+        Compatível com a saída da tarefa_logica_comando.cpp:
+        - atr/<id>/o_aceleracao -> payload numérico (int/float)
+        - atr/<id>/o_direcao    -> payload numérico (int/float)
+        Atualiza self.o_aceleracao e self.o_direcao diretamente.
+        """
+        try:
+            txt = msg.payload.decode().strip()
+            if not txt:
+                return
+            val = float(txt)
+            with self._lock:
+                if msg.topic == self.topic_o_acel:
+                    self.o_aceleracao = val
+                elif msg.topic == self.topic_o_dir:
+                    self.o_direcao = val
+        except Exception as e:
+            print(f"[SIM ACT-LEG {self.id}] erro:", e)
+
 
     # ---------- dinâmica ----------
 

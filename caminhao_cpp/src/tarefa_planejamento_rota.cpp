@@ -145,6 +145,12 @@ void tarefa_planejamento_rota_run(const std::string& broker_uri)
                     const double y   = j.value("f_posicao_y", 0.0);
                     const double ang = j.value("f_angulo_x", 0.0);
 
+                    std::cout << "[planejamento_rota] posicao_tratada: "
+                        << "x=" << x
+                        << " y=" << y
+                        << " ang=" << ang << std::endl;
+
+
                     // 2.a) Publica posição atual para a Gestão da Mina
                     json pub_pos;
                     pub_pos["truck_id"] = g_caminhao_id;
@@ -181,6 +187,7 @@ void tarefa_planejamento_rota_run(const std::string& broker_uri)
                         else {
                             // Chegou próximo do destino
                             sp_vel = 0.0;
+                            g_tem_destino.store(false);
                         }
                     }
 

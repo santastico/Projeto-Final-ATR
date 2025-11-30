@@ -209,6 +209,7 @@ void tarefa_controle_navegacao_run()
                     if (!j_sp.is_discarded()) {
                         g_sp_vel_atual = j_sp.value("setpoint_velocidade",      0.0);
                         g_sp_ang_atual = j_sp.value("setpoint_posicao_angular", ang_atual);
+
                     }
                 } catch (...) {
                     // setpoint inválido -> mantém antigos

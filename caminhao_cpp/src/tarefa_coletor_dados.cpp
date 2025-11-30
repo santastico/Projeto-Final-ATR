@@ -83,19 +83,19 @@ void tarefa_coletor_dados_run()
         std::string dado;
         int contador = 0;
         
-        while (g_buffer_posicao_tratada->retirar(dado)) {
-            // Timestamp
-            auto now = std::chrono::system_clock::now();
-            auto timestamp = std::chrono::system_clock::to_time_t(now);
-            char time_str[100];
-            std::strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", std::localtime(&timestamp));
+        // while (g_buffer_posicao_tratada->retirar(dado)) {
+        //     // Timestamp
+        //     auto now = std::chrono::system_clock::now();
+        //     auto timestamp = std::chrono::system_clock::to_time_t(now);
+        //     char time_str[100];
+        //     std::strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", std::localtime(&timestamp));
 
-            // Escreve no log
-            log << "[" << time_str << "] " << dado << std::endl;
-            contador++;
-        }
+        //     // Escreve no log
+        //     log << "[" << time_str << "] " << dado << std::endl;
+        //     contador++;
+        // }
         
-        log.flush(); // força escrita em disco
+        // log.flush(); // força escrita em disco
 
         // ============================
         // FIM SEÇÃO CRÍTICA
