@@ -174,7 +174,7 @@ def loop_pygame(client: mqtt.Client):
     global selected_truck_id
 
     pygame.init()
-    largura, altura = 500, 500
+    largura, altura = 800, 500
     screen = pygame.display.set_mode((largura, altura))
     pygame.display.set_caption("GestÃ£o da Mina - Mapa 100x100")
 
