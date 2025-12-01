@@ -85,4 +85,13 @@ void tarefa_monitoramento_falhas(
     int                 caminhao_id,
     NotificadorEventos& notificador);
 
+// =====================================================================
+// LOGGER (caixa-preta por caminhão)
+// =====================================================================
+
+void registrar_evento_log(
+    int               caminhao_id,
+    const char*       origem,
+    const std::string& mensagem);
+
 } // namespace atr

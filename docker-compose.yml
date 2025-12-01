@@ -32,6 +32,8 @@ services:
       - START_CAMINHAO=1
       - START_UI=0
       - BROKER_HOST=infra_mina
+    volumes:
+      - ./output:/app/output
     networks:
       - net_mina
 
@@ -46,6 +48,8 @@ services:
       - START_CAMINHAO=1
       - START_UI=0
       - BROKER_HOST=infra_mina
+    volumes:
+      - ./output:/app/output
     networks:
       - net_mina
 
@@ -60,6 +64,8 @@ services:
       - START_CAMINHAO=1
       - START_UI=0
       - BROKER_HOST=infra_mina
+    volumes:
+      - ./output:/app/output
     networks:
       - net_mina
 
@@ -74,6 +80,8 @@ services:
       - START_CAMINHAO=1
       - START_UI=0
       - BROKER_HOST=infra_mina
+    volumes:
+      - ./output:/app/output
     networks:
       - net_mina
 
@@ -88,6 +96,8 @@ services:
       - START_CAMINHAO=1
       - START_UI=0
       - BROKER_HOST=infra_mina
+    volumes:
+      - ./output:/app/output
     networks:
       - net_mina
 

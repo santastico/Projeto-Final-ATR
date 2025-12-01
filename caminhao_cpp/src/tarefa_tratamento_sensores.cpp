@@ -197,13 +197,17 @@ static void processar_mensagem(const std::string& texto_json)
                 if (!buffer_posicao_tratada->escrever(texto_filtrado)) {
                     std::cerr << "[tratamento_sensores] buffer_posicao_tratada CHEIO ao gravar lote.\n";
                 }
-            }
+            } 
             if (cv_buffer_tratada_ptr) {
                 cv_buffer_tratada_ptr->notify_all();
             }
 
             std::cout << "[LOTE PROCESSADO] Média de " << count << " amostras gravada no Buffer Tratado.\n";
             // std::cout << "[FILTRADO] " << texto_filtrado << "\n";
+            registrar_evento_log(
+                caminhao_id_global,
+                "tratamento",
+                "LOTE filtrado= "+ texto_filtrado);
         }
     }
     // Se não estava cheio, apenas acumulamos (já foi escrito no passo 1)

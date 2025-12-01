@@ -25,6 +25,8 @@ static std::mutex* g_mtx_posicao_tratada = nullptr;
 static std::condition_variable* g_cv_buffer_tratada = nullptr;
 static int g_caminhao_id = 1;
 
+// forward (definida em logger.cpp)
+void iniciar_log_para_caminhao(int caminhao_id);
 // ---------------------------------------------------------------------
 // Função de configuração (chamada pelo main)
 // ---------------------------------------------------------------------
@@ -35,6 +37,7 @@ void coletor_dados_config(
     std::condition_variable& cv_tratada,
     int caminhao_id)
 {
+    iniciar_log_para_caminhao(caminhao_id);
     g_buffer_posicao_tratada = buffer_tratada;
     g_mtx_posicao_tratada = &mtx_tratada;
     g_cv_buffer_tratada = &cv_tratada;
@@ -55,17 +58,6 @@ void tarefa_coletor_dados_run()
         return;
     }
 
-    // Abre arquivo de log (append mode)
-    std::string nome_arquivo = "coletor_dados_caminhao_" 
-                             + std::to_string(g_caminhao_id) 
-                             + ".txt";
-    std::ofstream log(nome_arquivo, std::ios::app);
-
-    if (!log.is_open()) {
-        std::cerr << "[coletor_dados] ERRO: Não conseguiu abrir " << nome_arquivo << "\n";
-        return;
-    }
-
     std::cout << "[coletor_dados] Thread iniciada. Aguardando dados...\n";
 
     while (true) {
@@ -82,31 +74,11 @@ void tarefa_coletor_dados_run()
         // Acordou! Processa todos os itens disponíveis
         std::string dado;
         int contador = 0;
-        
-        // while (g_buffer_posicao_tratada->ler(dado)) {
-        //     // Timestamp
-        //     auto now = std::chrono::system_clock::now();
-        //     auto timestamp = std::chrono::system_clock::to_time_t(now);
-        //     char time_str[100];
-        //     std::strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", std::localtime(&timestamp));
-
-        //     // Escreve no log
-        //     log << "[" << time_str << "] " << dado << std::endl;
-        //     contador++;
-        // }
-        
-        // log.flush(); // força escrita em disco
-
-        // ============================
-        // FIM SEÇÃO CRÍTICA
-        // ============================
 
         if (contador > 0) {
             std::cout << "[coletor_dados] " << contador << " registros coletados.\n";
         }
     }
-
-    log.close();
 }
 
 } // namespace atr

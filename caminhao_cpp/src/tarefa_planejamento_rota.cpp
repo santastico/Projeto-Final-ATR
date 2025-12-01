@@ -84,6 +84,11 @@ static void processar_setpoint_final(const std::string& payload)
 
             std::cout << "[planejamento_rota] Novo destino para caminhao "
                       << g_caminhao_id << ": x=" << x << " y=" << y << "\n";
+            registrar_evento_log(
+                g_caminhao_id,
+                "planejamento",
+                "novo_destino x=" + std::to_string(x) +
+                " y=" + std::to_string(y));
         }
     }
     catch (const std::exception& e) {
@@ -202,7 +207,11 @@ void tarefa_planejamento_rota_run(const std::string& broker_uri)
                             sp_ang = ang_desejado;
                         }
                     }
-
+                    registrar_evento_log(
+                        g_caminhao_id,
+                        "planejamento",
+                        "SP vel=" + std::to_string(sp_vel) +
+                        " ang=" + std::to_string(sp_ang));
                     if (g_buffer_setpoints && g_mtx_setpoints) {
                         json j_sp;
                         j_sp["truck_id"]                 = g_caminhao_id;

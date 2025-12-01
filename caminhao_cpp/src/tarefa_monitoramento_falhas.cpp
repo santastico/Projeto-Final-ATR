@@ -124,12 +124,14 @@ void tarefa_monitoramento_falhas(int caminhao_id, NotificadorEventos& notificado
                 if (!estado_falha_eletrica) {
                     notificador.disparar_evento(TipoEvento::FALHA_ELETRICA);
                     std::cout << "[Monitor " << caminhao_id << "] FALHA ELETRICA detectada.\n";
+                    registrar_evento_log(caminhao_id, "falha", "FALHA_ELETRICA=1");
                     estado_falha_eletrica = true;
                 }
             } else {
                 if (estado_falha_eletrica) {
                     notificador.disparar_evento(TipoEvento::NORMALIZACAO);
                     std::cout << "[Monitor " << caminhao_id << "] Falha eletrica normalizada.\n";
+                    registrar_evento_log(caminhao_id, "falha", "FALHA_ELETRICA=0");
                     estado_falha_eletrica = false;
                 }
             }
