@@ -2,16 +2,16 @@
 """
 gestao_mina.py
 
-Interface central de GestÃ£o da Mina (GUI Pygame + MQTT).
+Interface central de Gestão da Mina (GUI Pygame + MQTT).
 
 Responsabilidades (conforme arquitetura):
 - Assinar atr/<id>/posicao_inicial, publicados pelo Planejamento de Rota de
-  cada caminhÃ£o, para conhecer a posiÃ§Ã£o atual (tratada) da frota.
-- Renderizar um mapa 100x100 em Pygame, com um Ã­cone por caminhÃ£o.
+  cada caminhao, para conhecer a Posição atual (tratada) da frota.
+- Renderizar um mapa 100x100 em Pygame, com um Ã­cone por caminhao.
 - Permitir ao operador:
-    * Criar caminhÃµes no simulador (spawn/reset_position) escolhendo posiÃ§Ã£o
+    * Criar caminhÃµes no simulador (spawn/reset_position) escolhendo Posição
       e Ã¢ngulo iniciais.
-    * Selecionar um caminhÃ£o e clicar no mapa para definir o destino final
+    * Selecionar um caminhao e clicar no mapa para definir o destino final
       (setpoint_posicao_final) enviado ao Planejamento de Rota.
 """
 
@@ -79,10 +79,10 @@ def screen_to_world(px: int, py: int, width: int, height: int):
 
 def on_connect(client, userdata, flags, rc):
     print(f"[gestao_mina] Conectado a {BROKER_HOST}:{BROKER_PORT} rc={rc}")
-    # PosiÃ§Ã£o tratada publicada pelo Planejamento de Rota:
+    # Posição tratada publicada pelo Planejamento de Rota:
     # atr/<truck_id>/posicao_inicial
     client.subscribe("atr/+/posicao_inicial", qos=1)
-    print("[gestao_mina] Assinado tÃ³pico atr/+/posicao_inicial")
+    print("[gestao_mina] Assinado tópico atr/+/posicao_inicial")
 
 
 def on_message(client, userdata, msg):
@@ -123,28 +123,28 @@ def on_message(client, userdata, msg):
 
 def publicar_setpoint_final(client: mqtt.Client, truck_id: str, x_dest: float, y_dest: float):
     """
-    Publica o destino final (ponto final) para o caminhÃ£o:
+    Publica o destino final (ponto final) para o caminhao:
       atr/<id>/setpoint_posicao_final
     Payload: { "x": x_dest, "y": y_dest }
     """
     payload = {"x": float(x_dest), "y": float(y_dest)}
     topico = f"atr/{truck_id}/setpoint_posicao_final"
     client.publish(topico, json.dumps(payload), qos=1)
-    print(f"[gestao_mina] Novo destino para caminhÃ£o {truck_id}: "
+    print(f"[gestao_mina] Novo destino para caminhao {truck_id}: "
           f"({x_dest:.2f}, {y_dest:.2f}) -> {topico}")
 
 
 def criar_caminhao_simulador(client: mqtt.Client, truck_id: str, x_ini: float, y_ini: float, ang_ini: float):
     """
-    Cria caminhÃ£o no simulador e define posiÃ§Ã£o inicial, espelhando lÃ³gica do cli_gestao. [spawn + reset_position]
+    Cria caminhao no simulador e define Posição inicial, espelhando lÃ³gica do cli_gestao. [spawn + reset_position]
     """
     # 1) Spawn
     payload_spawn = {"cmd": "spawn", "truck_id": str(truck_id)}
     client.publish("atr/sim/spawn", json.dumps(payload_spawn), qos=1)
-    print(f"[gestao_mina] Spawn solicitado para caminhÃ£o {truck_id}")
+    print(f"[gestao_mina] Spawn solicitado para caminhao {truck_id}")
     time.sleep(0.2)
 
-    # 2) Reset de posiÃ§Ã£o
+    # 2) Reset de Posição
     payload_pos = {
         "cmd": "reset_position",
         "x": float(x_ini),
@@ -152,7 +152,7 @@ def criar_caminhao_simulador(client: mqtt.Client, truck_id: str, x_ini: float, y
         "ang": float(ang_ini),
     }
     client.publish(f"atr/{truck_id}/sim/cmd", json.dumps(payload_pos), qos=1)
-    print(f"[gestao_mina] PosiÃ§Ã£o inicial definida p/ {truck_id}: "
+    print(f"[gestao_mina] Posição inicial definida p/ {truck_id}: "
           f"({x_ini}, {y_ini}, ang={ang_ini})")
 
     # 3) Atualiza estado local imediatamente (sem esperar Planejamento)
@@ -176,7 +176,7 @@ def loop_pygame(client: mqtt.Client):
     pygame.init()
     largura, altura = 800, 500
     screen = pygame.display.set_mode((largura, altura))
-    pygame.display.set_caption("GestÃ£o da Mina - Mapa 100x100")
+    pygame.display.set_caption("Gestão da Mina - Mapa 100x100")
 
     clock = pygame.time.Clock()
     font = pygame.font.SysFont("Consolas", 16)
@@ -192,40 +192,40 @@ def loop_pygame(client: mqtt.Client):
                     rodando = False
 
                 elif event.key == pygame.K_c:
-                    # Criar caminhÃ£o via interface
+                    # Criar caminhao via interface
                     try:
-                        tid = input("\nID do caminhÃ£o para criar (1-5): ").strip()
+                        tid = input("\nID do caminhao para criar (1-5): ").strip()
                         if not tid:
-                            print("[gestao_mina] CriaÃ§Ã£o cancelada.")
+                            print("[gestao_mina] Criação cancelada.")
                         else:
-                            x_ini = float(input("PosiÃ§Ã£o X inicial (0-100): ").strip())
-                            y_ini = float(input("PosiÃ§Ã£o Y inicial (0-100): ").strip())
-                            ang_ini = float(input("Ã‚ngulo inicial em graus (0=lestes): ").strip() or "0")
+                            x_ini = float(input("Posição X inicial (0-100): ").strip())
+                            y_ini = float(input("Posição Y inicial (0-100): ").strip())
+                            ang_ini = float(input("Ângulo inicial em graus (0=lestes): ").strip() or "0")
                             criar_caminhao_simulador(client, tid, x_ini, y_ini, ang_ini)
                     except Exception as e:
-                        print(f"[gestao_mina] Erro ao criar caminhÃ£o: {e}")
+                        print(f"[gestao_mina] Erro ao criar caminhao: {e}")
 
                 elif event.key == pygame.K_t:
-                    # Selecionar caminhÃ£o e definir setpoint de destino via terminal
+                    # Selecionar caminhao e definir setpoint de destino via terminal
                     with estado_lock:
                         ids = sorted(estado_frota.keys())
 
-                    print("\n=== Selecionar caminhÃ£o para setpoint ===")
+                    print("\n=== Selecionar caminhao para setpoint ===")
                     if not ids:
-                        print("Nenhum caminhÃ£o conhecido ainda (aguarde posicao_inicial).")
+                        print("Nenhum caminhao conhecido ainda (aguarde posicao_inicial).")
                         continue
 
-                    print(f"IDs de caminhÃµes conhecidos ({len(ids)}): " + ", ".join(ids))
-                    tid = input("ID do caminhÃ£o (ENTER para cancelar): ").strip()
+                    print(f"IDs de caminhoes conhecidos ({len(ids)}): " + ", ".join(ids))
+                    tid = input("ID do caminhao (ENTER para cancelar): ").strip()
                     if not tid:
-                        print("[gestao_mina] SeleÃ§Ã£o cancelada.")
+                        print("[gestao_mina] Selecao cancelada.")
                         continue
                     if tid not in ids:
-                        print(f"[gestao_mina] ID {tid} nÃ£o estÃ¡ na lista de caminhÃµes conhecidos.")
+                        print(f"[gestao_mina] ID {tid} nÃ£o estÃ¡ na lista de caminhoes conhecidos.")
                         continue
 
                     selected_truck_id = tid
-                    print(f"[gestao_mina] CaminhÃ£o selecionado: {selected_truck_id}")
+                    print(f"[gestao_mina] Caminhao selecionado: {selected_truck_id}")
 
                     try:
                         x_dest = float(input("Destino X (0-100): ").strip())
@@ -287,9 +287,9 @@ def loop_pygame(client: mqtt.Client):
         # Painel de instruÃ§Ãµes
         painel = [
             "Gestao da Mina - Mapa 100x100",
-            "ESC= sair  |  C= criar caminhÃ£o  |  T= selecionar caminhÃ£o  |  Clique= destino",
-            f"CaminhÃ£o selecionado: {selected_truck_id if selected_truck_id else '(nenhum)'}",
-            f"CaminhÃµes visÃ­veis: {len(itens)}",
+            "ESC= sair  |  C= criar caminhao  |  T= selecionar caminhao para destino",
+            f"Caminhao selecionado: {selected_truck_id if selected_truck_id else '(nenhum)'}",
+            f"Caminhoes visiveis: {len(itens)}",
         ]
         y_txt = 10
         for linha in painel:

@@ -19,7 +19,7 @@ CAMINHOES_DISPONIVEIS = [1, 2, 3, 4, 5]
 
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
-        print(f"[MQTT] Conectado ao broker {BROKER_HOST}!")
+        #print(f"[MQTT] Conectado ao broker {BROKER_HOST}!")
         # Assina atualizações de sensores de TODOS os caminhões
         client.subscribe("atr/+/sensor/raw")
         # Assina respostas de lista do simulador
